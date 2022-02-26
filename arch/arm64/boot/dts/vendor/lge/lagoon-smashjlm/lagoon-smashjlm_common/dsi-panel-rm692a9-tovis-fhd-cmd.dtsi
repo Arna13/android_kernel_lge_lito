@@ -1,0 +1,139 @@
+/* Copyright (c) 2014, Code Aurora Forum. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&mdss_mdp {
+	dsi_rm692a9_fhd_cmd: qcom,mdss_dsi_rm692a9_fhd_cmd {
+		qcom,mdss-dsi-panel-name = "rm692a9_fhd_cmd mode dsi panel";
+		qcom,mdss-dsi-panel-type = "dsi_cmd_mode";
+		qcom,mdss-dsi-virtual-channel-id = <0>;
+		qcom,mdss-dsi-stream = <0>;
+		qcom,mdss-dsi-bpp = <24>;
+		qcom,mdss-dsi-color-order = "rgb_swap_rgb";
+		qcom,mdss-dsi-underflow-color = <0xff>;
+		qcom,mdss-dsi-border-color = <0>;
+		qcom,mdss-dsi-traffic-mode = "non_burst_sync_event";
+		qcom,mdss-dsi-lane-map = "lane_map_0123";
+		qcom,mdss-dsi-bllp-eof-power-mode;
+		qcom,mdss-dsi-bllp-power-mode;
+		qcom,mdss-dsi-lane-0-state;
+		qcom,mdss-dsi-lane-1-state;
+		qcom,mdss-dsi-lane-2-state;
+		qcom,mdss-dsi-lane-3-state;
+		qcom,mdss-dsi-reset-sequence = <1 10>, <0 2>, <1 10>;
+		qcom,mdss-dsi-dma-trigger = "trigger_sw";
+		qcom,mdss-dsi-mdp-trigger = "none";
+		qcom,mdss-dsi-te-pin-select = <1>;
+		qcom,panel-te-source = <1>;
+		qcom,mdss-dsi-wr-mem-start = <0x2c>;
+		qcom,mdss-dsi-wr-mem-continue = <0x3c>;
+		qcom,mdss-dsi-te-dcs-command = <1>;
+//		qcom,mdss-dsi-te-check-enable;
+//		qcom,mdss-dsi-te-using-te-pin;
+		qcom,mdss-dsi-lp11-init;
+		qcom,mdss-dsi-tx-eot-append;
+		qcom,dsi-ctrl-num = <0>;
+		qcom,dsi-phy-num = <0>;
+		/* qcom,dsi-select-sec-clocks = "src_byte_clk1", "src_pixel_clk1"; */
+		qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+		qcom,ulps-enabled;
+		//qcom,null-insertion-enabled;
+
+		qcom,mdss-dsi-panel-hdr-enabled;
+		qcom,mdss-dsi-panel-hdr-color-primaries = <14880 15935 32435 16555 14945 30910 7790 3415>;
+		qcom,mdss-dsi-panel-peak-brightness = <5643000>;
+		qcom,mdss-dsi-panel-blackness-level = <6134>;
+
+		qcom,mdss-pan-physical-width-dimension = <68>;
+		qcom,mdss-pan-physical-height-dimension = <142>;
+
+		lge,blmap = <
+			0
+			13 13 13 13 13 13 13 13 13 13 13 14 14 15 15 16 16 17 17 18
+			18 19 19 19 20 20 21 21 22 22 23 23 24 24 25 25 27 28 30 32
+			34 35 37 39 40 42 44 46 47 49 51 53 54 56 58 59 61 63 65 66
+			68 71 75 78 81 85 88 91 95 98 101 105 108 111 115 118 121 125 128 131
+			135 140 145 150 148 153 158 163 168 173 178 183 188 193 198 203 209 214 219 224
+			229 234 239 244 249 254 259 264 270 277 283 290 296 303 309 315 322 328 335 341
+			348 354 360 367 373 380 386 392 399 405 412 418 425 431 439 448 456 464 473 481
+			490 496 504 513 521 529 538 546 554 563 571 580 588 596 605 613 621 630 640 651
+			661 672 683 693 704 715 725 736 747 757 768 779 789 800 811 821 832 843 853 864
+			875 885 896 909 923 936 949 962 976 989 1002 1016 1029 1042 1056 1069 1082 1095 1109 1122
+			1135 1149 1162 1175 1188 1202 1215 1229 1244 1258 1273 1287 1302 1316 1331 1345 1359 1374 1388 1403
+			1417 1432 1446 1460 1475 1489 1504 1518 1533 1547 1562 1576 1594 1611 1629 1647 1665 1682 1700 1718
+			1736 1753 1771 1789 1807 1824 1842 1860 1878 1895 1913 1931 1949 1966 1984 1986 1988 1990 1993 1995
+			1997 1999 2001 2003 2005 2007 2010 2012 2014 2016 2018 2020 2022 2024 2027 2029 2031 2033 2035 2037
+			2039 2041 2044 2046 2048 2050 2063 2075 2088 2100 2113 2125 2138 2150 2166 2183 2199 2215 2231 2248
+			2264 2280 2301 2321 2342 2362 2383 2403 2424 2444 2465 2486 2506 2527 2547 2568 2588 2609 2629 2650
+			2677 2704 2731 2758 2785 2812 2838 2865 2892 2919 2946 2973 3000 3031 3062 3092 3123 3154 3185 3215
+			3246 3277 3308 3338 3369 3400 3437 3473 3510 3546 3583 3619 3656 3693 3729 3766 3802 3839 3876 3912
+			3949 3985 4022 4058 4095
+		>;
+
+		qcom,mdss-dsi-display-timings {
+			timing@0{
+				qcom,partial-update-enabled = "single_roi";
+				qcom,panel-roi-alignment = <1080 2 1080 2 1080 2>;
+				qcom,mdss-dsi-panel-phy-timings = [00 21 08 08 25 22 09 08 06 03 04 00];
+				qcom,mdss-dsi-t-clk-post = <0x18>;
+				qcom,mdss-dsi-t-clk-pre = <0x1B>;
+				qcom,mdss-dsi-panel-clockrate = <1056619200>;
+				qcom,display-topology = <1 0 1>;
+				qcom,default-topology-index = <0>;
+				qcom,mdss-dsi-panel-framerate = <60>;
+				qcom,mdss-dsi-panel-width = <1080>;
+				qcom,mdss-dsi-panel-height = <2340>;
+				qcom,mdss-dsi-h-front-porch = <28>;
+				qcom,mdss-dsi-h-back-porch = <36>;
+				qcom,mdss-dsi-h-pulse-width = <4>;
+				qcom,mdss-dsi-h-sync-skew = <0>;
+				qcom,mdss-dsi-v-back-porch = <4>;
+				qcom,mdss-dsi-v-front-porch = <12>;
+				qcom,mdss-dsi-v-pulse-width = <4>;
+				qcom,mdss-dsi-h-left-border = <0>;
+				qcom,mdss-dsi-h-right-border = <0>;
+				qcom,mdss-dsi-v-top-border = <0>;
+				qcom,mdss-dsi-v-bottom-border = <0>;
+				qcom,mdss-dsi-h-sync-pulse = <0>;
+				qcom,mdss-mdp-transfer-time-us = <15200>;
+
+				qcom,mdss-dsi-on-command = [
+					39 01 00 00 00 00 02 FE D0
+					39 01 00 00 00 00 02 99 01
+					39 01 00 00 00 00 02 FE 40
+					39 01 00 00 00 00 02 6F 00
+					39 01 00 00 00 00 02 9A 01
+					39 01 00 00 00 00 02 FE 00
+					39 01 00 00 00 00 02 5A 0B
+					39 01 00 00 00 00 02 5C 00
+					39 01 00 00 00 00 02 C2 08
+					39 01 00 00 00 00 02 35 00
+					39 01 00 00 00 00 03 51 00 00
+					05 01 00 00 78 00 01 11
+					05 01 00 00 3C 00 01 29
+				];
+				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
+
+				qcom,mdss-dsi-off-command = [
+					39 01 00 00 00 00 02 FE 00
+					05 01 00 00 50 00 01 38
+					39 01 00 00 00 00 02 FE 00
+					05 01 00 00 78 00 01 28
+					39 01 00 00 00 00 02 FE 00
+					05 01 00 00 0A 00 01 10
+				];
+				qcom,mdss-dsi-off-command-state = "dsi_lp_mode";
+
+			};
+		};
+	};
+};
+

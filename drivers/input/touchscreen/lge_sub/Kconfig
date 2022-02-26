@@ -1,0 +1,17 @@
+#
+# LGE touch core configuration
+#
+
+if INPUT_TOUCHSCREEN
+
+config LGE_TOUCH_SUB_PEN
+	bool "LGE Touch SUB PEN"
+	help
+	test code for pen
+
+config LGE_TOUCH_SUB_DEX
+	bool "LGE Touch SUB DEX"
+	help
+	code for DEX
+source "drivers/input/touchscreen/lge_sub/lgsic/Kconfig"
+endif
