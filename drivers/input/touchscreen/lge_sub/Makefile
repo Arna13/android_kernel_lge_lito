@@ -24,5 +24,4 @@ obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= touch_sub_notify.o
 obj-$(CONFIG_LGE_TOUCH_CORE_QCT)	+= touch_sub_hwif.o
 obj-$(CONFIG_LGE_TOUCH_CORE_MTK)	+= touch_sub_hwif_mtk.o
 obj-$(CONFIG_LGE_TOUCH_SUB_PEN)		+= touch_sub_pen.o
-obj-$(CONFIG_LGE_TOUCH_SUB_DEX)		+= touch_sub_dex.o
 obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= lgsic/

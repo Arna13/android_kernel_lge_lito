@@ -548,13 +548,6 @@ static void sde_encoder_phys_wb_setup_cdp(struct sde_encoder_phys *phys_enc,
 		intf_cfg_v1->wb_count = num_wb;
 		intf_cfg_v1->wb[0] = hw_wb->idx;
 		if (SDE_FORMAT_IS_YUV(format)) {
-			if (!phys_enc->hw_cdm) {
-				SDE_ERROR("Format:YUV but no cdm allocated\n");
-				SDE_EVT32(DRMID(phys_enc->parent),
-							 SDE_EVTLOG_ERROR);
-				return;
-			}
-
 			intf_cfg_v1->cdm_count = num_wb;
 			intf_cfg_v1->cdm[0] = hw_cdm->idx;
 		}
@@ -589,16 +582,18 @@ static void sde_encoder_phys_wb_setup_cdp(struct sde_encoder_phys *phys_enc,
 
 }
 
-static bool _sde_enc_phys_wb_detect_cwb(struct sde_encoder_phys *phys_enc,
+static void _sde_enc_phys_wb_detect_cwb(struct sde_encoder_phys *phys_enc,
 		struct drm_crtc_state *crtc_state)
 {
 	struct drm_encoder *encoder;
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
 	const struct sde_wb_cfg *wb_cfg = wb_enc->hw_wb->caps;
 
+	phys_enc->in_clone_mode = false;
+
 	/* Check if WB has CWB support */
 	if (!(wb_cfg->features & BIT(SDE_WB_HAS_CWB)))
-		return false;
+		return;
 
 	/* if any other encoder is connected to same crtc enable clone mode*/
 	drm_for_each_encoder(encoder, crtc_state->crtc->dev) {
@@ -606,11 +601,12 @@ static bool _sde_enc_phys_wb_detect_cwb(struct sde_encoder_phys *phys_enc,
 			continue;
 
 		if (phys_enc->parent != encoder) {
-			return true;
+			phys_enc->in_clone_mode = true;
+			break;
 		}
 	}
 
-	return false;
+	SDE_DEBUG("detect CWB - status:%d\n", phys_enc->in_clone_mode);
 }
 
 static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
@@ -690,7 +686,6 @@ static int sde_encoder_phys_wb_atomic_check(
 	struct sde_rect wb_roi;
 	const struct drm_display_mode *mode = &crtc_state->mode;
 	int rc;
-	bool clone_mode_curr = false;
 
 	SDE_DEBUG("[atomic_check:%d,%d,\"%s\",%d,%d]\n",
 			hw_wb->idx - WB_0, mode->base.id, mode->name,
@@ -706,20 +701,8 @@ static int sde_encoder_phys_wb_atomic_check(
 		return -EINVAL;
 	}
 
-	clone_mode_curr = _sde_enc_phys_wb_detect_cwb(phys_enc, crtc_state);
+	_sde_enc_phys_wb_detect_cwb(phys_enc, crtc_state);
 
-	/**
-	 * Fail the WB commit when there is a CWB session enabled in HW.
-	 * CWB session needs to be disabled since WB and CWB share the same
-	 * writeback hardware block.
-	 */
-	if (phys_enc->in_clone_mode && !clone_mode_curr) {
-		SDE_ERROR("WB commit before CWB disable\n");
-		return -EINVAL;
-	}
-
-	SDE_DEBUG("detect CWB - status:%d\n", clone_mode_curr);
-	phys_enc->in_clone_mode = clone_mode_curr;
 	memset(&wb_roi, 0, sizeof(struct sde_rect));
 
 	rc = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi);
@@ -731,10 +714,11 @@ static int sde_encoder_phys_wb_atomic_check(
 	SDE_DEBUG("[roi:%u,%u,%u,%u]\n", wb_roi.x, wb_roi.y,
 			wb_roi.w, wb_roi.h);
 
+	/* bypass check if commit with no framebuffer */
 	fb = sde_wb_connector_state_get_output_fb(conn_state);
 	if (!fb) {
-		SDE_ERROR("no output framebuffer\n");
-		return -EINVAL;
+		SDE_DEBUG("no output framebuffer\n");
+		return 0;
 	}
 
 	SDE_DEBUG("[fb_id:%u][fb:%u,%u]\n", fb->base.id,
@@ -1301,33 +1285,6 @@ static int sde_encoder_phys_wb_wait_for_commit_done(
 	return _sde_encoder_phys_wb_wait_for_commit_done(phys_enc, false);
 }
 
-static int sde_encoder_phys_wb_wait_for_cwb_done(
-		struct sde_encoder_phys *phys_enc)
-{
-	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
-	struct sde_encoder_wait_info wait_info = {0};
-	int rc = 0;
-
-	if (!phys_enc->in_clone_mode)
-		return 0;
-
-	SDE_EVT32(atomic_read(&phys_enc->pending_retire_fence_cnt));
-
-	wait_info.wq = &phys_enc->pending_kickoff_wq;
-	wait_info.atomic_cnt = &phys_enc->pending_retire_fence_cnt;
-	wait_info.timeout_ms = max_t(u32, wb_enc->wbdone_timeout,
-				KICKOFF_TIMEOUT_MS);
-
-	rc = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_WB_DONE,
-		&wait_info);
-
-	if (rc == -ETIMEDOUT)
-		SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc),
-			wb_enc->frame_count, SDE_EVTLOG_ERROR);
-
-	return rc;
-}
-
 /**
  * sde_encoder_phys_wb_prepare_for_kickoff - pre-kickoff processing
  * @phys_enc:	Pointer to physical encoder
@@ -1761,7 +1718,6 @@ static void sde_encoder_phys_wb_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->trigger_start = sde_encoder_helper_trigger_start;
 	ops->hw_reset = sde_encoder_helper_hw_reset;
 	ops->irq_control = sde_encoder_phys_wb_irq_ctrl;
-	ops->wait_for_tx_complete = sde_encoder_phys_wb_wait_for_cwb_done;
 }
 
 /**

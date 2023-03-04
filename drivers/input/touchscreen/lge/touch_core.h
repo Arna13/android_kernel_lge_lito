@@ -50,9 +50,6 @@
 #if defined(CONFIG_LGE_TOUCH_DEX)
 #include <touch_dex.h>
 #endif
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-#include <touch_encryption.h>
-#endif
 
 #if defined(CONFIG_TRUSTONIC_TRUSTED_UI)
 #include <linux/input/tui_hal_ts.h>
@@ -98,12 +95,6 @@ enum TOUCH_DEBUG {
 #define TOUCH_E(fmt, args...)					\
 	pr_err("[Touch E] [%s %d] "				\
 			fmt, __func__, __LINE__, ##args)
-
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-#define TOUCH_ENCRYP(fmt, args...)					\
-	pr_info("[ENCRYP_Touch] "					\
-			fmt, ##args)
-#endif
 
 extern u32 touch_debug_mask;
 #define TOUCH_D(condition, fmt, args...)			\
@@ -153,7 +144,6 @@ enum {
 	POWER_SW_RESET,
 	POWER_DSV_TOGGLE,
 	POWER_DSV_ALWAYS_ON,
-	POWER_ON_ETC,
 };
 
 enum {
@@ -381,11 +371,6 @@ enum {
 	APP_MENU,
 };
 
-enum {
-	FIRST_RESUME_NOT_YET = 0,
-	FIRST_RESUME_IS_OK,
-};
-
 #if defined(CONFIG_LGE_TOUCH_APP_FW_UPGRADE)
 enum {
 	APP_FW_UPGRADE_IDLE = 0,
@@ -393,12 +378,6 @@ enum {
 	APP_FW_UPGRADE_FLASHING,
 };
 #endif
-enum {
-	SWIVEL_NOT_INITIALIZED = -1,
-	SWIVEL_HALF = 0,
-	SWIVEL_CLOSED = 1,
-	SWIVEL_OPENED = 2,
-};
 struct state_info {
 	atomic_t core;
 	atomic_t pm;
@@ -410,7 +389,6 @@ struct state_info {
 	atomic_t wireless; /* connection using wirelees_charger */
 	atomic_t earjack; /* connection using earjack */
 	atomic_t fm_radio; /* connection using fm radio */
-	atomic_t swivel; /* set swivel state */
 	atomic_t lockscreen;
 	atomic_t ime;
 	atomic_t film;
@@ -424,12 +402,6 @@ struct state_info {
 	atomic_t film_mode; /* protection film in manufcturing */
 	atomic_t dualscreen;
 	atomic_t dex_mode;
-	atomic_t first_resume;
-};
-
-enum {
-	AOD_VERTICAL_MODE = 0,
-	AOD_HORIZONTAL_MODE,
 };
 
 struct touch_driver {
@@ -476,10 +448,8 @@ struct touch_operation_role {
 	bool use_lpwg_test;
 	bool hide_coordinate;
 	bool use_film_status;
-	bool use_synaptics_touchcomm;
 	bool use_active_pen_status;
 	bool use_dex_mode;
-	bool encryption_coordi;
 };
 
 struct tci_info {
@@ -650,14 +620,9 @@ struct touch_core_data {
 	struct touch_xfer_msg *xfer;
 
 	struct mutex lock;
-	struct mutex irq_lock;
-	struct mutex finger_mask_lock;
 	struct workqueue_struct *wq;
 	struct delayed_work init_work;
 	struct delayed_work upgrade_work;
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-	struct delayed_work encryp_work;
-#endif
 #if defined(CONFIG_LGE_TOUCH_APP_FW_UPGRADE)
 	struct delayed_work app_upgrade_work;
 #endif
@@ -719,11 +684,6 @@ struct touch_core_data {
 #endif
 #if defined(CONFIG_LGE_TOUCH_APP_FW_UPGRADE)
 	struct app_fw_upgrade_info app_fw_upgrade;
-#endif
-	int aod_mode;
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-	long encryption_matrix[ENCRYP_COEFF_MAT_SIZE][ENCRYP_COEFF_MAT_SIZE];
-	char str_encryption_RSA[BASE64_ENCODING_SIZE];
 #endif
 };
 
@@ -802,17 +762,12 @@ extern void touch_interrupt_control(struct device *dev, int on_off);
 extern void touch_report_all_event(struct touch_core_data *ts);
 extern void touch_send_uevent(struct touch_core_data *ts, int type);
 extern void touch_report_cancel_event(struct touch_core_data *ts);
-extern void touch_restore_state(struct touch_core_data *ts);
-extern int touch_snprintf(char *buf, int size, const char *fmt, ...);
 #if defined(CONFIG_SECURE_TOUCH)
 extern void secure_touch_notify(struct touch_core_data *ts);
 extern void secure_touch_init(struct touch_core_data *ts);
 extern void secure_touch_stop(struct touch_core_data *ts, bool blocking);
 #endif
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-extern void generate_coeff_matrix(void *ts);
-extern void encryption_coordinate(void *ts, int x, int y);
-#endif
+
 
 #if defined(CONFIG_TRUSTONIC_TRUSTED_UI)
 ssize_t tui_sysfs_ctl(struct device *dev, const char *buf, size_t count);

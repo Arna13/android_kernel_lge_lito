@@ -5,11 +5,6 @@
 #include "cm/lge_color_manager.h"
 #include "brightness/lge_brightness_def.h"
 #include "lge_dsi_panel.h"
-#include <soc/qcom/lge/board_lge.h>
-#include "../lge/factory/lge_factory.h"
-
-extern bool lge_get_factory_boot(void);
-extern int lge_get_mfts_mode(void);
 
 #define ADDR_PTLAR 0x30
 #define ADDR_PLTAC 0x31
@@ -58,78 +53,78 @@ static int rgb_preset[STEP_DG_PRESET][RGB_ALL] = {
 
 static char dg_ctrl1_values[NUM_DG_PRESET][OFFSET_DG_UPPER] = {
 	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAF},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0xAB},
-	{0x03, 0x05, 0x6B}
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B},
+	{0x03, 0x01, 0x6B}
 };
 
 static char dg_ctrl2_values[NUM_DG_PRESET][OFFSET_DG_LOWER] = {
-	{0x00, 0xFF, 0x94, 0x1F, 0xAE, 0x37, 0xAE, 0x1F, 0x94},
-	{0x00, 0xFB, 0x94, 0x1E, 0xAD, 0x35, 0xAB, 0x1C, 0x90},
-	{0x00, 0xF8, 0x94, 0x1E, 0xAC, 0x34, 0xAA, 0x1A, 0x8E},
-	{0x00, 0xF5, 0x93, 0x1D, 0xAA, 0x31, 0xA8, 0x17, 0x8B},
-	{0x00, 0xF2, 0x93, 0x1C, 0xA8, 0x30, 0xA5, 0x15, 0x88},
-	{0x00, 0xF0, 0x93, 0x1C, 0xA8, 0x2F, 0xA4, 0x14, 0x87},
-	{0x00, 0xEC, 0x92, 0x1A, 0xA6, 0x2D, 0xA1, 0x10, 0x83},
-	{0x00, 0xE9, 0x92, 0x19, 0xA5, 0x2B, 0x9F, 0x0D, 0x80},
-	{0x00, 0xE6, 0x90, 0x18, 0xA4, 0x2A, 0x9D, 0x0B, 0x7D},
-	{0x00, 0xE3, 0x90, 0x17, 0xA3, 0x27, 0x9B, 0x09, 0x7A},
-	{0x00, 0xE0, 0x90, 0x17, 0xA2, 0x26, 0x9A, 0x07, 0x78},
-	{0x00, 0xDD, 0x8F, 0x16, 0x9F, 0x24, 0x97, 0x04, 0x75},
-	{0x00, 0xDA, 0x8F, 0x15, 0x9E, 0x23, 0x95, 0x02, 0x72},
-	{0x00, 0xD7, 0x8E, 0x14, 0x9D, 0x21, 0x93, 0x00, 0x70},
-	{0x00, 0xD4, 0x8E, 0x14, 0x9C, 0x20, 0x91, 0xFE, 0x6D},
-	{0x00, 0xD1, 0x8E, 0x13, 0x9B, 0x1D, 0x8F, 0xFB, 0x6A},
-	{0x00, 0xCE, 0x8D, 0x11, 0x9A, 0x1C, 0x8D, 0xF8, 0x68},
-	{0x00, 0xCB, 0x8D, 0x10, 0x99, 0x1A, 0x8B, 0xF6, 0x65},
-	{0x00, 0xC9, 0x8D, 0x10, 0x98, 0x19, 0x8A, 0xF4, 0x63},
-	{0x00, 0xC6, 0x8C, 0x0F, 0x96, 0x18, 0x87, 0xF2, 0x61},
-	{0x00, 0xC3, 0x8C, 0x0E, 0x95, 0x16, 0x85, 0xF0, 0x5E},
-	{0x00, 0xC0, 0x8C, 0x0E, 0x94, 0x15, 0x84, 0xEE, 0x5C},
-	{0x00, 0xBD, 0x8B, 0x0D, 0x92, 0x12, 0x82, 0xEB, 0x59},
-	{0x00, 0xBA, 0x8B, 0x0C, 0x91, 0x11, 0x80, 0xE9, 0x56},
-	{0x00, 0xB6, 0x8A, 0x0B, 0x90, 0x0F, 0x7D, 0xE6, 0x53},
-	{0x00, 0xB3, 0x8A, 0x0A, 0x8F, 0x0D, 0x7B, 0xE4, 0x50},
-	{0x00, 0xB0, 0x89, 0x0A, 0x8E, 0x0C, 0x7A, 0xE2, 0x4D},
-	{0x00, 0xAD, 0x88, 0x09, 0x8B, 0x0A, 0x77, 0xDF, 0x4A},
-	{0x00, 0xAA, 0x88, 0x07, 0x8A, 0x09, 0x75, 0xDC, 0x47},
-	{0x00, 0xA7, 0x87, 0x06, 0x89, 0x06, 0x73, 0xDA, 0x45},
-	{0x00, 0xA4, 0x87, 0x06, 0x88, 0x05, 0x71, 0xD8, 0x42},
-	{0x00, 0xA1, 0x87, 0x05, 0x87, 0x03, 0x6F, 0xD5, 0x3F},
-	{0x00, 0x9E, 0x86, 0x04, 0x86, 0x02, 0x6D, 0xD3, 0x3D},
-	{0x00, 0x9B, 0x86, 0x03, 0x85, 0x00, 0x6B, 0xD1, 0x3A},
-	{0x00, 0x98, 0x86, 0x03, 0x83, 0xFF, 0x69, 0xCF, 0x38}
+	{0x00, 0xFF, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x80},
+	{0x00, 0xFB, 0x7F, 0xFF, 0x7E, 0xFE, 0x7D, 0xFD, 0x7C},
+	{0x00, 0xF8, 0x7F, 0xFE, 0x7D, 0xFC, 0x7C, 0xFB, 0x7A},
+	{0x00, 0xF5, 0x7E, 0xFD, 0x7C, 0xFB, 0x7A, 0xF9, 0x77},
+	{0x00, 0xF2, 0x7E, 0xFC, 0x7B, 0xF9, 0x78, 0xF6, 0x75},
+	{0x00, 0xF0, 0x7E, 0xFC, 0x7A, 0xF8, 0x76, 0xF4, 0x72},
+	{0x00, 0xEC, 0x7D, 0xFB, 0x79, 0xF6, 0x74, 0xF2, 0x6F},
+	{0x00, 0xE9, 0x7D, 0xFA, 0x77, 0xF5, 0x72, 0xEF, 0x6D},
+	{0x00, 0xE6, 0x7C, 0xF9, 0x76, 0xF3, 0x70, 0xED, 0x6A},
+	{0x00, 0xE3, 0x7C, 0xF9, 0x75, 0xF2, 0x6E, 0xEB, 0x67},
+	{0x00, 0xE0, 0x7C, 0xF8, 0x74, 0xF0, 0x6C, 0xE8, 0x64},
+	{0x00, 0xDD, 0x7C, 0xF7, 0x73, 0xEF, 0x6B, 0xE6, 0x62},
+	{0x00, 0xDA, 0x7B, 0xF6, 0x72, 0xED, 0x68, 0xE4, 0x5F},
+	{0x00, 0xD7, 0x7B, 0xF6, 0x71, 0xEC, 0x67, 0xE2, 0x5D},
+	{0x00, 0xD4, 0x7A, 0xF5, 0x6F, 0xEA, 0x65, 0xDF, 0x5A},
+	{0x00, 0xD1, 0x7A, 0xF4, 0x6E, 0xE9, 0x63, 0xDD, 0x58},
+	{0x00, 0xCE, 0x79, 0xF3, 0x6D, 0xE7, 0x61, 0xDB, 0x55},
+	{0x00, 0xCB, 0x79, 0xF3, 0x6C, 0xE6, 0x60, 0xD9, 0x53},
+	{0x00, 0xC9, 0x79, 0xF2, 0x6B, 0xE4, 0x5E, 0xD7, 0x50},
+	{0x00, 0xC6, 0x78, 0xF1, 0x6A, 0xE3, 0x5C, 0xD5, 0x4E},
+	{0x00, 0xC3, 0x78, 0xF1, 0x69, 0xE2, 0x5A, 0xD3, 0x4B},
+	{0x00, 0xC0, 0x78, 0xF0, 0x68, 0xE0, 0x58, 0xD1, 0x49},
+	{0x00, 0xBD, 0x77, 0xEF, 0x67, 0xDF, 0x57, 0xCF, 0x46},
+	{0x00, 0xBA, 0x77, 0xEE, 0x66, 0xDD, 0x55, 0xCC, 0x44},
+	{0x00, 0xB6, 0x77, 0xEE, 0x65, 0xDB, 0x52, 0xC9, 0x40},
+	{0x00, 0xB3, 0x76, 0xED, 0x63, 0xDA, 0x50, 0xC7, 0x3D},
+	{0x00, 0xB0, 0x76, 0xEC, 0x62, 0xD8, 0x4F, 0xC5, 0x3B},
+	{0x00, 0xAD, 0x76, 0xEB, 0x61, 0xD7, 0x4D, 0xC2, 0x38},
+	{0x00, 0xAA, 0x75, 0xEB, 0x60, 0xD6, 0x4B, 0xC0, 0x36},
+	{0x00, 0xA7, 0x75, 0xEA, 0x5F, 0xD4, 0x49, 0xBE, 0x33},
+	{0x00, 0xA4, 0x75, 0xE9, 0x5E, 0xD3, 0x47, 0xBC, 0x30},
+	{0x00, 0xA1, 0x74, 0xE9, 0x5D, 0xD1, 0x45, 0xBA, 0x2E},
+	{0x00, 0x9E, 0x74, 0xE8, 0x5C, 0xD0, 0x43, 0xB7, 0x2B},
+	{0x00, 0x9B, 0x74, 0xE7, 0x5B, 0xCE, 0x42, 0xB5, 0x29},
+	{0x00, 0x98, 0x73, 0xE6, 0x59, 0xCD, 0x40, 0xB3, 0x26}
 };
 
 #define NUM_SAT_CTRL 5
@@ -145,11 +140,11 @@ static char dg_ctrl2_values[NUM_DG_PRESET][OFFSET_DG_LOWER] = {
 #define REG_SHA_CTRL 0xB2
 
 static char sat_ctrl_values[NUM_SAT_CTRL][OFFSET_SAT_CTRL] = {
-	{0x29, 0x21, 0x21, 0x2B, 0x28, 0x29, 0x2A, 0x2A, 0x2A, 0x21, 0x29, 0x27},
-	{0x2F, 0x27, 0x27, 0x31, 0x2E, 0x2F, 0x30, 0x30, 0x30, 0x27, 0x2F, 0x2D},
-	{0x35, 0x2D, 0x2D, 0x37, 0x34, 0x35, 0x36, 0x36, 0x36, 0x2D, 0x35, 0x33},
-	{0x3B, 0x33, 0x33, 0x3D, 0x3A, 0x3B, 0x3C, 0x3C, 0x3C, 0x33, 0x3B, 0x39},
-	{0x41, 0x39, 0x39, 0x43, 0x40, 0x41, 0x42, 0x42, 0x42, 0x39, 0x41, 0x3F}
+	{0x29, 0x21, 0x21, 0x2B, 0x25, 0x29, 0x2A, 0x2A, 0x2A, 0x21, 0x29, 0x27},
+	{0x2F, 0x27, 0x27, 0x31, 0x2B, 0x2F, 0x30, 0x30, 0x30, 0x27, 0x2F, 0x2D},
+	{0x35, 0x2D, 0x2D, 0x37, 0x31, 0x35, 0x36, 0x36, 0x36, 0x2D, 0x35, 0x33},
+	{0x3B, 0x33, 0x33, 0x3D, 0x37, 0x3B, 0x3C, 0x3C, 0x3C, 0x33, 0x3B, 0x39},
+	{0x41, 0x39, 0x39, 0x43, 0x3D, 0x41, 0x42, 0x42, 0x42, 0x39, 0x41, 0x3F}
 };
 
 static char hue_ctrl_values[NUM_HUE_CTRL][OFFSET_HUE_CTRL] = {
@@ -373,7 +368,7 @@ static void lge_set_screen_mode_sw43103(struct dsi_panel *panel, bool send_cmd)
 		mutex_lock(&panel->panel_lock);
 		break;
 	case screen_mode_oled_vivid:
-		panel->lge.dgc_status = 0x01;
+		panel->lge.dgc_status = 0x00;
 		panel->lge.sharpness_status = 0x00;
 		pr_info("vivid mode\n");
 		lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_CM_VIVID);
@@ -435,144 +430,63 @@ static void lge_set_fp_lhbm_sw43103(struct dsi_panel *panel, int input)
 		pr_info("requested same state=%d\n", panel->lge.old_fp_lhbm_mode);
 		return;
 	}
+	pr_err("lge_set_fp_lhbm_sw43103\n");
 
-	if (panel->lge.use_fps_mode1_new) {
-		switch (input) {
-		case LGE_FP_LHBM_READY:
-			panel->lge.lhbm_ready_enable = true;
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_READY);	//Enable dimming
-			pr_info("[LHBM READY]\n");
-		break;
-		case LGE_FP_LHBM_SM_ON:
-		case LGE_FP_LHBM_FORCED_ON:
-			if (fp_aod_ctrl) {
-				lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_AOD_TO_FPS);
-				pr_info("AOD to Normal mode\n");
-			}
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_READY);	//Enable dimming
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_ON);
-			if (input == LGE_FP_LHBM_FORCED_ON) {
-				if (panel->lge.old_fp_lhbm_mode == LGE_FP_LHBM_FORCED_ON)
-					panel->lge.forced_lhbm = false;
-				else
-					panel->lge.forced_lhbm = true;
-			}
-			pr_info("[LHBM LGE_FP_LHBM_SM_ON]\n");
-		break;
-		case LGE_FP_LHBM_ON:
-			if (lge_get_factory_boot() || lge_get_mfts_mode()) {
-				lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_READY);
-				pr_info("Factory mode need lhbm ready\n");
-			}
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_ON);
-			pr_info("[LHBM ON]\n");
-		break;
-			case LGE_FP_LHBM_SM_OFF:
-		case LGE_FP_LHBM_FORCED_OFF:
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_OFF);
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_EXIT);	//Disable dimming
-			if (fp_aod_ctrl) {
-				lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_FPS_TO_AOD);
-				pr_info("Normal to AOD mode\n");
-			}
-			if (!panel->lge.lhbm_ready_enable) {
-				pr_info("[LHBM OFF] current brightness = %d\n", panel->bl_config.bl_level);
-				dsi_panel_set_backlight(panel, panel->bl_config.bl_level);
-			}
-			panel->lge.forced_lhbm = false;
-			pr_info("[LHBM LGE_FP_LHBM_SM_OFF]\n");
-		break;
-		case LGE_FP_LHBM_OFF:
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_OFF);
-			if (lge_get_factory_boot() || lge_get_mfts_mode()) {
-				lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_EXIT);
-				pr_info("Factory mode need lhbm exit\n");
-			}
-			if (fp_aod_ctrl) {
-				lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_FPS_TO_AOD);
-				pr_info("Normal to AOD mode\n");
-			}
-			if (!panel->lge.lhbm_ready_enable) {
-				pr_info("[LHBM OFF] current brightness = %d\n", panel->bl_config.bl_level);
-				dsi_panel_set_backlight(panel, panel->bl_config.bl_level);
-			}
-			panel->lge.forced_lhbm = false;
-		break;
-		case LGE_FP_LHBM_EXIT:
-		case LGE_FP_LHBM_FORCED_EXIT:
-			pr_info("[LHBM EXIT] current brightness = %d\n", panel->bl_config.bl_level);
-			panel->lge.lhbm_ready_enable = false;
-			panel->lge.forced_lhbm = false;
-			dsi_panel_set_backlight(panel, panel->bl_config.bl_level);
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_OFF);		//force off to avoid abnormal case
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_EXIT);	//Disable dimming
-			if (lge_dsi_panel_is_power_on_interactive(panel)) {
-				mutex_unlock(&panel->panel_lock);
-				lge_set_screen_mode_sw43103(panel,true);
-				mutex_lock(&panel->panel_lock);
-			}
-		break;
-		default:
-			pr_info("Not ready for another lhbm mode = %d\n", input);
-		break;
+	switch (input) {
+	case LGE_FP_LHBM_READY:
+		panel->lge.lhbm_ready_enable = true;
+		lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_READY);	//Enable dimming
+		pr_info("[LHBM READY] set max brightness 0x6A9\n");
+	break;
+	case LGE_FP_LHBM_ON:
+	case LGE_FP_LHBM_SM_ON:
+	case LGE_FP_LHBM_FORCED_ON:
+		if (fp_aod_ctrl) {
+			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_AOD_TO_FPS);
+			pr_info("AOD to Normal mode\n");
 		}
-	} else {
-		switch (input) {
-		case LGE_FP_LHBM_READY:
-			panel->lge.lhbm_ready_enable = true;
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_READY);	//Enable dimming
-			pr_info("[LHBM READY] set max brightness 0x6A9\n");
-		break;
-		case LGE_FP_LHBM_ON:
-		case LGE_FP_LHBM_SM_ON:
-		case LGE_FP_LHBM_FORCED_ON:
-			if (fp_aod_ctrl) {
-				lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_AOD_TO_FPS);
-				pr_info("AOD to Normal mode\n");
-			}
-			pr_info("[LHBM ON] set max brightness 0x6A9\n");
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_ON);
-			if (input == LGE_FP_LHBM_FORCED_ON) {
-				if (panel->lge.old_fp_lhbm_mode == LGE_FP_LHBM_FORCED_ON)
-					panel->lge.forced_lhbm = false;
-				else
-					panel->lge.forced_lhbm = true;
-			}
-		break;
-		case LGE_FP_LHBM_OFF:
-		case LGE_FP_LHBM_SM_OFF:
-		case LGE_FP_LHBM_FORCED_OFF:
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_OFF);
-			if (fp_aod_ctrl) {
-				lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_FPS_TO_AOD);
-				pr_info("Normal to AOD mode\n");
-			}
-			if (!panel->lge.lhbm_ready_enable) {
-				pr_info("[LHBM OFF] current brightness = %d\n", panel->bl_config.bl_level);
-				dsi_panel_set_backlight(panel, panel->bl_config.bl_level);
-			}
-			panel->lge.forced_lhbm = false;
-		break;
-		case LGE_FP_LHBM_EXIT:
-		case LGE_FP_LHBM_FORCED_EXIT:
-			pr_info("[LHBM EXIT] current brightness = %d\n", panel->bl_config.bl_level);
-			panel->lge.lhbm_ready_enable = false;
-			panel->lge.forced_lhbm = false;
-			dsi_panel_set_backlight(panel, panel->bl_config.bl_level);
-
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_OFF);		//force off to avoid abnormal case
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_EXIT);	//Disable dimming
-
-			if (lge_dsi_panel_is_power_on_interactive(panel)) {
-				mutex_unlock(&panel->panel_lock);
-				lge_set_screen_mode_sw43103(panel,true);
-				mutex_lock(&panel->panel_lock);
-			}
-		break;
-		default:
-			pr_info("Not ready for another lhbm mode = %d\n", input);
-		break;
+		pr_info("[LHBM ON] set max brightness 0x6A9\n");
+		lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_ON);
+		if (input == LGE_FP_LHBM_FORCED_ON) {
+			if (panel->lge.old_fp_lhbm_mode == LGE_FP_LHBM_FORCED_ON)
+				panel->lge.forced_lhbm = false;
+			else
+				panel->lge.forced_lhbm = true;
 		}
+	break;
+	case LGE_FP_LHBM_OFF:
+	case LGE_FP_LHBM_SM_OFF:
+	case LGE_FP_LHBM_FORCED_OFF:
+		lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_OFF);
+		if (fp_aod_ctrl) {
+			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_FPS_TO_AOD);
+			pr_info("Normal to AOD mode\n");
+		}
+		if (!panel->lge.lhbm_ready_enable) {
+			pr_info("[LHBM OFF] current brightness = %d\n", panel->bl_config.bl_level);
+			dsi_panel_set_backlight(panel, panel->bl_config.bl_level);
+		}
+		panel->lge.forced_lhbm = false;
+	break;
+	case LGE_FP_LHBM_EXIT:
+	case LGE_FP_LHBM_FORCED_EXIT:
+		pr_info("[LHBM EXIT] current brightness = %d\n", panel->bl_config.bl_level);
+		panel->lge.lhbm_ready_enable = false;
+		panel->lge.forced_lhbm = false;
+		dsi_panel_set_backlight(panel, panel->bl_config.bl_level);
+
+		lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_OFF);		//force off to avoid abnormal case
+		lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_FP_LHBM_EXIT);	//Disable dimming
+
+		if (lge_dsi_panel_is_power_on_interactive(panel)) {
+			mutex_unlock(&panel->panel_lock);
+			lge_set_screen_mode_sw43103(panel,true);
+			mutex_lock(&panel->panel_lock);
+		}
+	break;
+	default:
+		pr_info("Not ready for another lhbm mode = %d\n", input);
+	break;
 	}
 
 	panel->lge.old_fp_lhbm_mode = input;
@@ -582,31 +496,13 @@ static void lge_set_fp_lhbm_sw43103(struct dsi_panel *panel, int input)
 	return;
 }
 
-static void lge_update_ddic_hdr_status(struct dsi_panel *panel)
-{
-	panel->lge.ddic_hdr = !!(panel->lge.ve_hdr | panel->lge.ace_hdr);
-	pr_info("hdr %d ve_hdr %d ace_hdr %d \n", panel->lge.ddic_hdr, panel->lge.ve_hdr, panel->lge.ace_hdr);
-}
-
 static void lge_set_video_enhancement_sw43103(struct dsi_panel *panel, int input)
 {
 	int rc = 0;
-	bool enable = false;
-	struct backlight_device *bd;
-
-	if (!panel->bl_config.raw_bd) {
-		pr_err("backlight device is NULL\n");
-		return;
-	}
-	bd = panel->bl_config.raw_bd;
 
 	mutex_lock(&panel->panel_lock);
 
-	panel->lge.ve_hdr = input;
-	lge_update_ddic_hdr_status(panel);
-	enable = panel->lge.ddic_hdr;
-
-	if (enable) {
+	if (input) {
 		rc = lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_VIDEO_ENHANCEMENT_ON);
 		if (rc)
 			pr_err("failed to send VIDEO_ENHANCEMENT_ON cmd, rc=%d\n", rc);
@@ -624,163 +520,41 @@ static void lge_set_video_enhancement_sw43103(struct dsi_panel *panel, int input
 	pr_info("send cmds to %s the video enhancer \n",
 		(input == true) ? "enable" : "disable");
 
-	mutex_lock(&bd->ops_lock);
 	lge_backlight_device_update_status(panel->bl_config.raw_bd);
-	mutex_unlock(&bd->ops_lock);
 }
 
-static void lge_set_ecc_status_sw43103(struct dsi_panel *panel, int input)
-{
-	int rc = 0;
-
-	mutex_lock(&panel->panel_lock);
-	if (input) {
-		rc = lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_ECC_STATUS_ON);
-		if (rc)
-			pr_err("failed to send ECC_STATUS_ON cmd, rc=%d\n", rc);
-	} else {
-		rc = lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_ECC_STATUS_OFF);
-		if (rc)
-			pr_err("failed to send ECC_STATUS_OFF cmd, rc=%d\n", rc);
-	}
-	mutex_unlock(&panel->panel_lock);
-
-	pr_info("send ecc %s cmd\n", input? "enable" : "disable");
-}
-
-static void lge_update_irc_state(struct dsi_panel *panel, int value)
-{
-	panel->lge.irc_current_state = value;
-	pr_info("current irc state is %d\n", panel->lge.irc_current_state);
-
-	return;
-}
-
-int lge_set_irc_state_sw43103(struct dsi_panel *panel, enum lge_irc_mode mode, enum lge_irc_ctrl enable)
+static void lge_irc_control_store_sw43103(struct dsi_panel *panel, bool enable)
 {
 	char *payload = NULL;
-	int prev_state = !!panel->lge.irc_current_state;
-	int new_state;
 
 	if (!panel) {
 		pr_err("panel not exist\n");
-		return -EINVAL;
+		return;
 	}
-	pr_info("irc request=%s\n", ((enable == LGE_IRC_OFF) ? "off" : "on"));
 
 	mutex_lock(&panel->panel_lock);
-	lge_update_irc_state(panel, enable);
-	new_state = !!panel->lge.irc_current_state;
-
-	if(!panel->lge.use_irc_ctrl) {
-		pr_info("go to ace set\n");
-		goto ace_set;
-	}
-
-	if (prev_state == new_state) {
-		pr_info("same state, skip=(%d,%d)\n", prev_state, new_state);
-		goto ace_set;
-	}
 
 	payload = get_payload_addr(panel, LGE_DDIC_DSI_IRC_CTRL, 1);
 	if (!payload) {
 		pr_err("LGE_DDIC_DSI_IRC_CTRL is NULL\n");
-        panel->lge.irc_pending = false;
 		mutex_unlock(&panel->panel_lock);
-		return -EINVAL;
+		return;
 	}
 
 	payload[1] &= 0x60;
-	if (enable == LGE_IRC_OFF)
-		payload[1] = 0x60;
-	else
-		payload[1] = 0x61;
+	panel->lge.irc_current_state = enable;
+	payload[1] |= panel->lge.irc_current_state;
 
 	pr_info("irc-command: 0x%02x", payload[1]);
 
 	lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_IRC_CTRL);
 
-	ace_set:
-	panel->lge.irc_pending = false;
-	if ((mode == LGE_GLOBAL_IRC_HBM) && panel->lge.use_ace_ctrl) {
-		if (enable == LGE_IRC_OFF) {
-			panel->lge.ace_hdr = 1;
-			lge_update_ddic_hdr_status(panel);
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_ACE_TUNE);
-		} else {
-			panel->lge.ace_hdr = 0;
-			lge_update_ddic_hdr_status(panel);
-			lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_ACE_RESTORE);
-			mutex_unlock(&panel->panel_lock);
-			lge_set_screen_mode_sw43103(panel, true);
-			mutex_lock(&panel->panel_lock);
-		}
-	}
 	mutex_unlock(&panel->panel_lock);
-	return 0;
-}
-
-int lge_get_irc_state_sw43103(struct dsi_panel *panel)
-{
-	int ret;
-
-	mutex_lock(&panel->panel_lock);
-	pr_info("current_state=%d\n", panel->lge.irc_current_state);
-	ret = !!panel->lge.irc_current_state;
-	mutex_unlock(&panel->panel_lock);
-	return ret;
-}
-
-int lge_set_irc_default_state_sw43103(struct dsi_panel *panel)
-{
-	lge_update_irc_state(panel, LGE_IRC_ON);
-	return 0;
-}
-
-static int lge_daylight_mode_set_sw43103(struct dsi_panel *panel, int input)
-{
-	struct backlight_device *bd;
-
-	if (!panel->bl_config.raw_bd) {
-		pr_err("backlight device is NULL\n");
-		return -EINVAL;
-	}
-	bd = panel->bl_config.raw_bd;
-
-	mutex_lock(&panel->panel_lock);
-	pr_info("daylight_mode = %d\n", input);
-
-	if(panel->lge.daylight_mode)
-		lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_DAYLIGHT_ON);
-	else
-		lge_ddic_dsi_panel_tx_cmd_set(panel, LGE_DDIC_DSI_DAYLIGHT_OFF);
-
-	mutex_unlock(&panel->panel_lock);
-
-	if (panel->lge.use_irc_ctrl) {
-		if(panel->lge.hdr_mode)
-			lge_set_irc_state_sw43103(panel, LGE_GLOBAL_IRC_HDR, LGE_IRC_OFF);
-		else
-			lge_set_irc_state_sw43103(panel, LGE_GLOBAL_IRC_HDR, LGE_IRC_ON);
-	}
-
-	mutex_lock(&bd->ops_lock);
-	lge_backlight_device_update_status(panel->bl_config.raw_bd);
-	mutex_unlock(&bd->ops_lock);
-
-	return 0;
 }
 
 static int lge_hdr_mode_set_sw43103(struct dsi_panel *panel, int input)
 {
 	bool hdr_mode = ((input > 0) ? true : false);
-	struct backlight_device *bd;
-
-	if (!panel->bl_config.raw_bd) {
-		pr_err("backlight device is NULL\n");
-		return -EINVAL;
-	}
-	bd = panel->bl_config.raw_bd;
 
 	mutex_lock(&panel->panel_lock);
 	if (hdr_mode) {
@@ -794,23 +568,15 @@ static int lge_hdr_mode_set_sw43103(struct dsi_panel *panel, int input)
 			((panel->lge.color_manager_status == 1) ? "enabled" : "disabled"),
 			((panel->lge.dgc_status == 1) ? "enabled" : "disabled"));
 
-	if (panel->lge.use_irc_ctrl) {
-		if (hdr_mode) {
-			lge_set_irc_state_sw43103(panel, LGE_GLOBAL_IRC_HDR, LGE_IRC_OFF);
-		} else {
-			lge_set_irc_state_sw43103(panel, LGE_GLOBAL_IRC_HDR, LGE_IRC_ON);
-		}
-	}
-
 	if (hdr_mode) {
+		lge_irc_control_store_sw43103(panel, false);
 		lge_display_control_store_sw43103(panel, true);
 	} else {
+		lge_irc_control_store_sw43103(panel, true);
 		lge_set_screen_mode_sw43103(panel, true);
 	}
 
-	mutex_lock(&bd->ops_lock);
 	lge_backlight_device_update_status(panel->bl_config.raw_bd);
-	mutex_unlock(&bd->ops_lock);
 
 	return 0;
 }
@@ -862,7 +628,6 @@ struct lge_ddic_ops sw43103_ops = {
 	.lge_set_therm_dim = NULL,
 	.lge_get_brightness_dim = NULL,
 	.lge_set_brightness_dim = NULL,
-	.daylight_mode_set = lge_daylight_mode_set_sw43103,
 	/* image quality */
 	.hdr_mode_set = lge_hdr_mode_set_sw43103,
 	.lge_set_custom_rgb = lge_set_custom_rgb_sw43103,
@@ -872,7 +637,6 @@ struct lge_ddic_ops sw43103_ops = {
 	.sharpness_set = NULL,
 	.lge_set_true_view_mode = NULL,
 	.lge_set_video_enhancement = lge_set_video_enhancement_sw43103,
-	.lge_set_ecc_status = lge_set_ecc_status_sw43103,
 	.lge_vr_lp_mode_set = lge_vr_lp_mode_set_sw43103,
 	.lge_set_tc_perf = lge_set_tc_perf_sw43103,
 	/* drs */
@@ -889,9 +653,9 @@ struct lge_ddic_ops sw43103_ops = {
 	.set_pps_cmds = NULL,
 	.unset_pps_cmds = NULL,
 	/* irc */
-	.set_irc_default_state = lge_set_irc_default_state_sw43103,
-	.set_irc_state = lge_set_irc_state_sw43103,
-	.get_irc_state = lge_get_irc_state_sw43103,
+	.set_irc_default_state = NULL,
+	.set_irc_state = NULL,
+	.get_irc_state = NULL,
 	/* lhbm */
 	.lge_set_fp_lhbm = lge_set_fp_lhbm_sw43103,
 };

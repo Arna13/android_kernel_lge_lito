@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
  */
 
 /*
@@ -110,18 +110,20 @@ struct dp_mst_sim_mode {
 
 struct dp_mst_bridge {
 	struct drm_bridge base;
-	struct drm_private_obj obj;
 	u32 id;
 
 	bool in_use;
 
 	struct dp_display *display;
 	struct drm_encoder *encoder;
+	bool encoder_active_sts;
 
 	struct drm_display_mode drm_mode;
 	struct dp_display_mode dp_mode;
 	struct drm_connector *connector;
+	struct drm_connector *old_connector;
 	void *dp_panel;
+	void *old_dp_panel;
 
 	int vcpi;
 	int pbn;
@@ -131,13 +133,6 @@ struct dp_mst_bridge {
 	u32 fixed_port_num;
 	bool fixed_port_added;
 	struct drm_connector *fixed_connector;
-};
-
-struct dp_mst_bridge_state {
-	struct drm_private_state base;
-	struct drm_connector *connector;
-	void *dp_panel;
-	int num_slots;
 };
 
 struct dp_mst_private {
@@ -159,54 +154,9 @@ struct dp_mst_encoder_info_cache {
 };
 
 #define to_dp_mst_bridge(x)     container_of((x), struct dp_mst_bridge, base)
-#define to_dp_mst_bridge_priv(x) \
-		container_of((x), struct dp_mst_bridge, obj)
-#define to_dp_mst_bridge_priv_state(x) \
-		container_of((x), struct dp_mst_bridge_state, base)
-#define to_dp_mst_bridge_state(x) \
-		to_dp_mst_bridge_priv_state((x)->obj.state)
 
 struct dp_mst_private dp_mst;
 struct dp_mst_encoder_info_cache dp_mst_enc_cache;
-
-static struct drm_private_state *dp_mst_duplicate_bridge_state(
-		struct drm_private_obj *obj)
-{
-	struct dp_mst_bridge_state *state;
-
-	state = kmemdup(obj->state, sizeof(*state), GFP_KERNEL);
-	if (!state)
-		return NULL;
-
-	__drm_atomic_helper_private_obj_duplicate_state(obj, &state->base);
-
-	return &state->base;
-}
-
-static void dp_mst_destroy_bridge_state(struct drm_private_obj *obj,
-		struct drm_private_state *state)
-{
-	struct dp_mst_bridge_state *priv_state =
-		to_dp_mst_bridge_priv_state(state);
-
-	kfree(priv_state);
-}
-
-static const struct drm_private_state_funcs dp_mst_bridge_state_funcs = {
-	.atomic_duplicate_state = dp_mst_duplicate_bridge_state,
-	.atomic_destroy_state = dp_mst_destroy_bridge_state,
-};
-
-static struct dp_mst_bridge_state *dp_mst_get_bridge_atomic_state(
-		struct drm_atomic_state *state, struct dp_mst_bridge *bridge)
-{
-	struct drm_device *dev = bridge->base.dev;
-
-	WARN_ON(!drm_modeset_is_locked(&dev->mode_config.connection_mutex));
-
-	return to_dp_mst_bridge_priv_state(
-			drm_atomic_get_private_obj_state(state, &bridge->obj));
-}
 
 static void dp_mst_sim_destroy_port(struct kref *ref)
 {
@@ -659,8 +609,6 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	struct dp_display_mode dp_mode;
 	struct dp_mst_bridge *bridge;
 	struct dp_display *dp;
-	struct drm_crtc_state *crtc_state;
-	struct dp_mst_bridge_state *bridge_state;
 
 	DP_MST_DEBUG("enter\n");
 
@@ -671,17 +619,13 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	}
 
 	bridge = to_dp_mst_bridge(drm_bridge);
-
-	crtc_state = container_of(mode, struct drm_crtc_state, mode);
-	bridge_state = dp_mst_get_bridge_atomic_state(crtc_state->state,
-			bridge);
-	if (IS_ERR(bridge_state)) {
-		DP_ERR("invalid bridge state\n");
+	if (!bridge->connector) {
+		DP_ERR("Invalid connector\n");
 		ret = false;
 		goto end;
 	}
 
-	if (!bridge_state->dp_panel) {
+	if (!bridge->dp_panel) {
 		DP_ERR("Invalid dp_panel\n");
 		ret = false;
 		goto end;
@@ -689,7 +633,7 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 
 	dp = bridge->display;
 
-	dp->convert_to_dp_mode(dp, bridge_state->dp_panel, mode, &dp_mode);
+	dp->convert_to_dp_mode(dp, bridge->dp_panel, mode, &dp_mode);
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
 
 	DP_MST_DEBUG("mst bridge [%d] mode:%s fixup\n", bridge->id, mode->name);
@@ -703,6 +647,7 @@ static int _dp_mst_compute_config(struct drm_atomic_state *state,
 {
 	int slots = 0, pbn;
 	struct sde_connector *c_conn = to_sde_connector(connector);
+	int rc = 0;
 
 	DP_MST_DEBUG("enter\n");
 
@@ -718,7 +663,7 @@ static int _dp_mst_compute_config(struct drm_atomic_state *state,
 
 	DP_MST_DEBUG("exit\n");
 
-	return slots;
+	return rc;
 }
 
 static void _dp_mst_update_timeslots(struct dp_mst_private *mst,
@@ -911,6 +856,9 @@ static void dp_mst_bridge_pre_enable(struct drm_bridge *drm_bridge)
 	bridge = to_dp_mst_bridge(drm_bridge);
 	dp = bridge->display;
 
+	bridge->old_connector = NULL;
+	bridge->old_dp_panel = NULL;
+
 	if (!bridge->connector) {
 		DP_ERR("Invalid connector\n");
 		return;
@@ -1060,8 +1008,17 @@ static void dp_mst_bridge_post_disable(struct drm_bridge *drm_bridge)
 		DP_INFO("[%d] DP display unprepare failed, rc=%d\n",
 		       bridge->id, rc);
 
-	bridge->connector = NULL;
-	bridge->dp_panel =  NULL;
+	/* maintain the connector to encoder link during suspend/resume */
+	if (mst->state != PM_SUSPEND) {
+		/* Disconnect the connector and panel info from bridge */
+		mst->mst_bridge[bridge->id].old_connector =
+				mst->mst_bridge[bridge->id].connector;
+		mst->mst_bridge[bridge->id].old_dp_panel =
+				mst->mst_bridge[bridge->id].dp_panel;
+		mst->mst_bridge[bridge->id].connector = NULL;
+		mst->mst_bridge[bridge->id].dp_panel = NULL;
+		mst->mst_bridge[bridge->id].encoder_active_sts = false;
+	}
 
 	DP_MST_INFO_LOG("mst bridge [%d] post disable complete\n",
 			bridge->id);
@@ -1072,7 +1029,6 @@ static void dp_mst_bridge_mode_set(struct drm_bridge *drm_bridge,
 				struct drm_display_mode *adjusted_mode)
 {
 	struct dp_mst_bridge *bridge;
-	struct dp_mst_bridge_state *dp_bridge_state;
 	struct dp_display *dp;
 
 	DP_MST_DEBUG("enter\n");
@@ -1083,10 +1039,23 @@ static void dp_mst_bridge_mode_set(struct drm_bridge *drm_bridge,
 	}
 
 	bridge = to_dp_mst_bridge(drm_bridge);
+	if (!bridge->connector) {
+		if (!bridge->old_connector) {
+			DP_ERR("Invalid connector\n");
+			return;
+		}
+		bridge->connector = bridge->old_connector;
+		bridge->old_connector = NULL;
+	}
 
-	dp_bridge_state = to_dp_mst_bridge_state(bridge);
-	bridge->connector = dp_bridge_state->connector;
-	bridge->dp_panel = dp_bridge_state->dp_panel;
+	if (!bridge->dp_panel) {
+		if (!bridge->old_dp_panel) {
+			DP_ERR("Invalid dp_panel\n");
+			return;
+		}
+		bridge->dp_panel = bridge->old_dp_panel;
+		bridge->old_dp_panel = NULL;
+	}
 
 	dp = bridge->display;
 
@@ -1118,7 +1087,6 @@ int dp_mst_drm_bridge_init(void *data, struct drm_encoder *encoder)
 {
 	int rc = 0;
 	struct dp_mst_bridge *bridge = NULL;
-	struct dp_mst_bridge_state *state;
 	struct drm_device *dev;
 	struct dp_display *display = data;
 	struct msm_drm_private *priv = NULL;
@@ -1170,16 +1138,6 @@ int dp_mst_drm_bridge_init(void *data, struct drm_encoder *encoder)
 	encoder->bridge = &bridge->base;
 	priv->bridges[priv->num_bridges++] = &bridge->base;
 
-	state = kzalloc(sizeof(*state), GFP_KERNEL);
-	if (state == NULL) {
-		rc = -ENOMEM;
-		goto end;
-	}
-
-	drm_atomic_private_obj_init(&bridge->obj,
-				    &state->base,
-				    &dp_mst_bridge_state_funcs);
-
 	DP_MST_DEBUG("mst drm bridge init. bridge id:%d\n", i);
 
 	/*
@@ -1194,7 +1152,6 @@ int dp_mst_drm_bridge_init(void *data, struct drm_encoder *encoder)
 				bridge->encoder);
 		if (bridge->fixed_connector == NULL) {
 			DP_ERR("failed to create fixed connector\n");
-			kfree(state);
 			rc = -ENOMEM;
 			goto end;
 		}
@@ -1280,9 +1237,8 @@ enum drm_mode_status dp_mst_connector_mode_valid(
 	struct drm_dp_mst_port *mst_port;
 	struct dp_display_mode dp_mode;
 	uint16_t available_pbn, required_pbn;
-	int available_slots, required_slots;
-	struct dp_mst_bridge_state *dp_bridge_state;
 	int i, slots_in_use = 0, active_enc_cnt = 0;
+	int available_slots, required_slots;
 	const u32 tot_slots = 63;
 
 	if (!connector || !mode || !display) {
@@ -1294,21 +1250,21 @@ enum drm_mode_status dp_mst_connector_mode_valid(
 	c_conn = to_sde_connector(connector);
 	mst_port = c_conn->mst_port;
 
-	/* dp bridge state is protected by drm_mode_config.connection_mutex */
+	mutex_lock(&mst->mst_lock);
+	available_pbn = mst_port->available_pbn;
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
-		dp_bridge_state = to_dp_mst_bridge_state(&mst->mst_bridge[i]);
-		if (dp_bridge_state->connector &&
-				dp_bridge_state->connector != connector) {
+		if (mst->mst_bridge[i].encoder_active_sts &&
+			(mst->mst_bridge[i].connector != connector)) {
 			active_enc_cnt++;
-			slots_in_use += dp_bridge_state->num_slots;
+			slots_in_use += mst->mst_bridge[i].num_slots;
 		}
 	}
+	mutex_unlock(&mst->mst_lock);
 
-	if (active_enc_cnt < DP_STREAM_MAX) {
-		available_pbn = mst_port->available_pbn;
+	if (active_enc_cnt < DP_STREAM_MAX)
 		available_slots = tot_slots - slots_in_use;
-	} else {
-		pr_debug("all mst streams are active\n");
+	else {
+		DP_DEBUG("all mst streams are active\n");
 		return MODE_BAD;
 	}
 
@@ -1384,38 +1340,24 @@ dp_mst_atomic_best_encoder(struct drm_connector *connector,
 	struct dp_mst_private *mst = dp_display->dp_mst_prv_info;
 	struct sde_connector *conn = to_sde_connector(connector);
 	struct drm_encoder *enc = NULL;
-	struct dp_mst_bridge_state *bridge_state;
 	u32 i;
 
-	if (state->best_encoder)
-		return state->best_encoder;
-
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
-		bridge_state = dp_mst_get_bridge_atomic_state(
-				state->state, &mst->mst_bridge[i]);
-		if (IS_ERR(bridge_state))
-			goto end;
-
-		if (bridge_state->connector == connector) {
+		if (mst->mst_bridge[i].connector == connector) {
 			enc = mst->mst_bridge[i].encoder;
 			goto end;
 		}
 	}
 
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
-		if (mst->mst_bridge[i].fixed_connector)
-			continue;
-
-		bridge_state = dp_mst_get_bridge_atomic_state(
-				state->state, &mst->mst_bridge[i]);
-
-		if (!bridge_state->connector) {
-			bridge_state->connector = connector;
-			bridge_state->dp_panel = conn->drv_panel;
+		if (!mst->mst_bridge[i].encoder_active_sts &&
+			!mst->mst_bridge[i].fixed_connector) {
+			mst->mst_bridge[i].encoder_active_sts = true;
+			mst->mst_bridge[i].connector = connector;
+			mst->mst_bridge[i].dp_panel = conn->drv_panel;
 			enc = mst->mst_bridge[i].encoder;
 			break;
 		}
-
 	}
 
 end:
@@ -1429,6 +1371,23 @@ end:
 	return enc;
 }
 
+static struct dp_mst_bridge *_dp_mst_get_bridge_from_encoder(
+		struct dp_display *dp_display,
+		struct drm_encoder *encoder)
+{
+	struct dp_mst_private *mst = dp_display->dp_mst_prv_info;
+	int i;
+
+	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
+		if (mst->mst_bridge[i].encoder == encoder)
+			return &mst->mst_bridge[i];
+	}
+
+	DP_MST_DEBUG("mst bridge detect for encoder failed\n");
+
+	return NULL;
+}
+
 static int dp_mst_connector_atomic_check(struct drm_connector *connector,
 		void *display, struct drm_connector_state *new_conn_state)
 {
@@ -1437,8 +1396,7 @@ static int dp_mst_connector_atomic_check(struct drm_connector *connector,
 	struct drm_connector_state *old_conn_state;
 	struct drm_crtc *old_crtc;
 	struct drm_crtc_state *crtc_state;
-	struct dp_mst_bridge *bridge;
-	struct dp_mst_bridge_state *bridge_state;
+	struct dp_mst_bridge *bridge = NULL;
 	struct dp_display *dp_display = display;
 	struct dp_mst_private *mst = dp_display->dp_mst_prv_info;
 	struct sde_connector *c_conn;
@@ -1446,8 +1404,17 @@ static int dp_mst_connector_atomic_check(struct drm_connector *connector,
 
 	DP_MST_DEBUG("enter:\n");
 
+	/*
+	 * Skip atomic check during mst suspend, to avoid mismanagement of
+	 * available vcpi slots.
+	 */
+	if (mst->state == PM_SUSPEND)
+		return rc;
+
 	if (!new_conn_state)
 		return rc;
+
+	mutex_lock(&mst->mst_lock);
 
 	state = new_conn_state->state;
 
@@ -1468,44 +1435,19 @@ static int dp_mst_connector_atomic_check(struct drm_connector *connector,
 				bridge->num_slots);
 	}
 
-	if (drm_atomic_crtc_needs_modeset(crtc_state)) {
-		if (WARN_ON(!old_conn_state->best_encoder)) {
-			rc = -EINVAL;
+	bridge = _dp_mst_get_bridge_from_encoder(dp_display,
+			old_conn_state->best_encoder);
+	if (!bridge)
+		goto end;
+
+	slots = bridge->num_slots;
+	if (drm_atomic_crtc_needs_modeset(crtc_state) && slots > 0) {
+		rc = mst->mst_fw_cbs->atomic_release_vcpi_slots(state,
+				&mst->mst_mgr, slots);
+		if (rc) {
+			DP_ERR("failed releasing %d vcpi slots rc:%d\n",
+					slots, rc);
 			goto end;
-		}
-
-		bridge = to_dp_mst_bridge(
-				old_conn_state->best_encoder->bridge);
-
-		bridge_state = dp_mst_get_bridge_atomic_state(state, bridge);
-		if (IS_ERR(bridge_state)) {
-			rc = PTR_ERR(bridge_state);
-			goto end;
-		}
-
-		if (WARN_ON(bridge_state->connector != connector)) {
-			rc = -EINVAL;
-			goto end;
-		}
-
-		slots = bridge_state->num_slots;
-		if (slots > 0) {
-			rc = mst->mst_fw_cbs->atomic_release_vcpi_slots(state,
-					&mst->mst_mgr, slots);
-			if (rc) {
-				pr_err("failed releasing %d vcpi slots %d\n",
-						slots, rc);
-				goto end;
-			}
-		}
-
-		bridge_state->num_slots = 0;
-
-		if (!new_conn_state->crtc && mst->state != PM_SUSPEND) {
-			bridge_state->connector = NULL;
-			bridge_state->dp_panel = NULL;
-
-			DP_MST_DEBUG("clear best encoder: %d\n", bridge->id);
 		}
 	}
 
@@ -1518,45 +1460,28 @@ mode_set:
 	if (drm_atomic_crtc_needs_modeset(crtc_state) && crtc_state->active) {
 		c_conn = to_sde_connector(connector);
 
-		if (WARN_ON(!new_conn_state->best_encoder)) {
-			rc = -EINVAL;
-			goto end;
-		}
-
-		bridge = to_dp_mst_bridge(
-				new_conn_state->best_encoder->bridge);
-
-		bridge_state = dp_mst_get_bridge_atomic_state(state, bridge);
-		if (IS_ERR(bridge_state)) {
-			rc = PTR_ERR(bridge_state);
-			goto end;
-		}
-
-		if (WARN_ON(bridge_state->connector != connector)) {
-			rc = -EINVAL;
-			goto end;
-		}
-
-		if (WARN_ON(bridge_state->num_slots)) {
-			rc = -EINVAL;
-			goto end;
-		}
-
 		dp_display->convert_to_dp_mode(dp_display, c_conn->drv_panel,
 				&crtc_state->mode, &dp_mode);
 
 		slots = _dp_mst_compute_config(state, mst, connector, &dp_mode);
 		if (slots < 0) {
 			rc = slots;
-			goto end;
-		}
 
-		bridge_state->num_slots = slots;
+			/* Disconnect the conn and panel info from bridge */
+			bridge = _dp_mst_get_bridge_from_encoder(dp_display,
+						new_conn_state->best_encoder);
+			if (!bridge)
+				goto end;
+
+			bridge->connector = NULL;
+			bridge->dp_panel = NULL;
+			bridge->encoder_active_sts = false;
+		}
 	}
 
 end:
-	DP_MST_DEBUG("mst connector:%d atomic check ret %d\n",
-			connector->base.id, rc);
+	mutex_unlock(&mst->mst_lock);
+	DP_MST_DEBUG("mst connector:%d atomic check\n", connector->base.id);
 	return rc;
 }
 
@@ -1720,21 +1645,20 @@ dp_mst_fixed_atomic_best_encoder(struct drm_connector *connector,
 	struct dp_mst_private *mst = dp_display->dp_mst_prv_info;
 	struct sde_connector *conn = to_sde_connector(connector);
 	struct drm_encoder *enc = NULL;
-	struct dp_mst_bridge_state *bridge_state;
 	u32 i;
 
-	if (state->best_encoder)
-		return state->best_encoder;
+	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
+		if (mst->mst_bridge[i].connector == connector) {
+			enc = mst->mst_bridge[i].encoder;
+			goto end;
+		}
+	}
 
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
 		if (mst->mst_bridge[i].fixed_connector == connector) {
-			bridge_state = dp_mst_get_bridge_atomic_state(
-					state->state, &mst->mst_bridge[i]);
-			if (IS_ERR(bridge_state))
-				goto end;
-
-			bridge_state->connector = connector;
-			bridge_state->dp_panel = conn->drv_panel;
+			mst->mst_bridge[i].encoder_active_sts = true;
+			mst->mst_bridge[i].connector = connector;
+			mst->mst_bridge[i].dp_panel = conn->drv_panel;
 			enc = mst->mst_bridge[i].encoder;
 			break;
 		}

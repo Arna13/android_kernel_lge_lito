@@ -59,10 +59,6 @@ void lge_enable_watchdog(void);
 void lge_pet_watchdog(void);
 void lge_panic_handler_fb_cleanup(void);
 
-#ifdef CONFIG_MACH_LITO_WINGLM
-void lge_set_display_ldo_enabled(unsigned int val);
-#endif
-
 #ifdef CONFIG_LGE_HANDLE_PANIC_RPMH_TIMEOUT
 void lge_set_rphm_timeout_panic(void);
 #endif

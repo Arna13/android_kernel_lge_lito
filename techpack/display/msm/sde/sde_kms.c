@@ -54,12 +54,6 @@
 #include "soc/qcom/secure_buffer.h"
 #include "soc/qcom/qtee_shmbridge.h"
 
-#if defined(CONFIG_LGE_DUAL_SCREEN)
-#include <linux/lge_ds3.h>
-extern void request_dualscreen_recovery(void);
-extern int dp_ctrl_status;
-#endif
-
 #define CREATE_TRACE_POINTS
 #include "sde_trace.h"
 
@@ -729,9 +723,6 @@ static void _sde_clear_boot_config(struct sde_boot_config *boot_cfg)
 	SDE_IMEM_WRITE(&boot_cfg->addr2, 0x0);
 }
 
-#ifdef CONFIG_LGE_HANDLE_PANIC
-int skip_free_rdump = 0;
-#endif
 static int _sde_kms_release_splash_buffer(struct sde_kms *sde_kms,
 					unsigned int mem_addr,
 					unsigned int splash_buffer_size,
@@ -747,15 +738,6 @@ static int _sde_kms_release_splash_buffer(struct sde_kms *sde_kms,
 		return -EINVAL;
 	}
 
-#ifdef CONFIG_LGE_HANDLE_PANIC
-	if(!skip_free_rdump)
-	{
-		SDE_DEBUG("Freeing display rdump region because dload_mode is disabled.\n");
-		ramdump_buffer_size = 0;
-	}
-	else
-		SDE_DEBUG("NOT freeing display rdump region because dload_mode is enabled.\n");
-#endif
 	/* leave ramdump memory only if base address matches */
 	if (ramdump_base == mem_addr &&
 			ramdump_buffer_size <= splash_buffer_size) {
@@ -953,9 +935,6 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 		if ((old_mode != new_mode) || (old_fps != new_fps)) {
 			struct drm_panel_notifier notifier_data;
 
-			SDE_EVT32(old_mode, new_mode, old_fps, new_fps,
-				connector->panel, crtc->state->active,
-				old_conn_state->crtc, event);
 			pr_debug("change detected (power mode %d->%d, fps %d->%d)\n",
 				old_mode, new_mode, old_fps, new_fps);
 
@@ -1125,42 +1104,6 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 	}
 }
 
-static void sde_kms_check_for_ext_vote(struct sde_kms *sde_kms,
-		struct sde_power_handle *phandle)
-{
-	struct sde_crtc *sde_crtc;
-	struct drm_crtc *crtc;
-	struct drm_device *dev;
-	bool crtc_enabled = false;
-
-	if (!sde_kms->catalog->allow_gdsc_toggle)
-		return;
-
-	dev = sde_kms->dev;
-
-	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-		sde_crtc = to_sde_crtc(crtc);
-		if (sde_crtc->enabled)
-			crtc_enabled = true;
-	}
-
-	mutex_lock(&phandle->ext_client_lock);
-
-	/* In some targets, a gdsc toggle is needed after crtc is disabled.
-	 * There are some scenarios where presence of an external vote like
-	 * secure vote which can prevent this from happening. In those
-	 * cases, allow the target to go through a gdsc toggle after
-	 * crtc is disabled.
-	 */
-	if (!crtc_enabled && phandle->is_ext_vote_en) {
-		pm_runtime_put_sync(sde_kms->dev->dev);
-		SDE_EVT32(phandle->is_ext_vote_en);
-		pm_runtime_get_sync(sde_kms->dev->dev);
-	}
-
-	mutex_unlock(&phandle->ext_client_lock);
-}
-
 static void sde_kms_complete_commit(struct msm_kms *kms,
 		struct drm_atomic_state *old_state)
 {
@@ -1222,8 +1165,6 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i)
 		_sde_kms_release_splash_resource(sde_kms, crtc);
 
-	sde_kms_check_for_ext_vote(sde_kms, &priv->phandle);
-
 	SDE_EVT32_VERBOSE(SDE_EVTLOG_FUNC_EXIT);
 	SDE_ATRACE_END("sde_kms_complete_commit");
 }
@@ -1234,9 +1175,6 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 	struct drm_encoder *encoder;
 	struct drm_device *dev;
 	int ret;
-#if defined(CONFIG_LGE_DUAL_SCREEN)
-	static int retry_wait_commit_count = 0;
-#endif
 
 	if (!kms || !crtc || !crtc->state) {
 		SDE_ERROR("invalid params\n");
@@ -1274,19 +1212,6 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		if (ret && ret != -EWOULDBLOCK) {
 			SDE_ERROR("wait for commit done returned %d\n", ret);
 			sde_crtc_request_frame_reset(crtc);
-#if defined(CONFIG_LGE_DUAL_SCREEN)
-			if (is_ds_connected()) {
-				if (retry_wait_commit_count >= 10) {
-					SDE_ERROR("%s: Call request_dualscreen_recovery\n", __func__);
-					request_dualscreen_recovery();
-					retry_wait_commit_count = 0;
-					dp_ctrl_status = 1;
-				} else {
-					if (!dp_ctrl_status)
-						retry_wait_commit_count++;
-				}
-			}
-#endif
 			break;
 		}
 
@@ -1301,7 +1226,7 @@ static void sde_kms_prepare_fence(struct msm_kms *kms,
 {
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *old_crtc_state;
-	int i;
+	int i, rc;
 
 	if (!kms || !old_state || !old_state->dev || !old_state->acquire_ctx) {
 		SDE_ERROR("invalid argument(s)\n");
@@ -1309,6 +1234,15 @@ static void sde_kms_prepare_fence(struct msm_kms *kms,
 	}
 
 	SDE_ATRACE_BEGIN("sde_kms_prepare_fence");
+retry:
+	/* attempt to acquire ww mutex for connection */
+	rc = drm_modeset_lock(&old_state->dev->mode_config.connection_mutex,
+			       old_state->acquire_ctx);
+
+	if (rc == -EDEADLK) {
+		drm_modeset_backoff(old_state->acquire_ctx);
+		goto retry;
+	}
 
 	/* old_state actually contains updated crtc pointers */
 	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
@@ -1648,9 +1582,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 		/* update display cap to MST_MODE for DP MST encoders */
 		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
-		sde_kms->dp_stream_count = dp_display_get_num_of_streams();
-		for (idx = 0; idx < sde_kms->dp_stream_count &&
-				priv->num_encoders < max_encoders; idx++) {
+		for (idx = 0; idx < sde_kms->dp_stream_count; idx++) {
 			info.h_tile_instance[0] = idx;
 			encoder = sde_encoder_init(dev, &info);
 			if (IS_ERR_OR_NULL(encoder)) {
@@ -2692,10 +2624,9 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms)
 	return rc;
 }
 
-static bool sde_kms_check_for_splash(struct msm_kms *kms, struct drm_crtc *crtc)
+static bool sde_kms_check_for_splash(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
-	struct drm_encoder *encoder;
 
 	if (!kms) {
 		SDE_ERROR("invalid kms\n");
@@ -2703,18 +2634,7 @@ static bool sde_kms_check_for_splash(struct msm_kms *kms, struct drm_crtc *crtc)
 	}
 
 	sde_kms = to_sde_kms(kms);
-
-	if (!crtc || !sde_kms->splash_data.num_splash_displays)
-		return !!sde_kms->splash_data.num_splash_displays;
-
-	drm_for_each_encoder_mask(encoder, crtc->dev,
-			crtc->state->encoder_mask) {
-		if (sde_encoder_in_cont_splash(encoder))
-			return true;
-	}
-
-	return false;
-
+	return sde_kms->splash_data.num_splash_displays;
 }
 
 static int sde_kms_get_mixer_count(const struct msm_kms *kms,
@@ -3192,7 +3112,6 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 			mmu, "sde");
 		if (IS_ERR(aspace)) {
 			ret = PTR_ERR(aspace);
-			mmu->funcs->destroy(mmu);
 			goto fail;
 		}
 
@@ -3222,13 +3141,12 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 		}
 	}
 
-	sde_kms->base.aspace = sde_kms->aspace[0];
-
 	return 0;
 
 early_map_fail:
 	_sde_kms_unmap_all_splash_regions(sde_kms);
 fail:
+	mmu->funcs->destroy(mmu);
 	_sde_kms_mmu_destroy(sde_kms);
 
 	return ret;
@@ -3265,43 +3183,30 @@ static void _sde_kms_set_lutdma_vbif_remap(struct sde_kms *sde_kms)
 	sde_vbif_set_qos_remap(sde_kms, &qos_params);
 }
 
-void sde_kms_update_pm_qos_irq_request(struct sde_kms *sde_kms,
-			 bool enable, bool skip_lock)
+static void sde_kms_update_pm_qos_irq_request(struct sde_kms *sde_kms)
 {
-	struct msm_drm_private *priv;
+	struct pm_qos_request *req;
 
-	priv = sde_kms->dev->dev_private;
+	req = &sde_kms->pm_qos_irq_req;
+	req->type = PM_QOS_REQ_AFFINE_CORES;
+	req->cpus_affine = sde_kms->irq_cpu_mask;
 
-	if (!skip_lock)
-		mutex_lock(&priv->phandle.phandle_lock);
-
-	if (enable) {
-		struct pm_qos_request *req;
-		u32 cpu_irq_latency;
-
-		req = &sde_kms->pm_qos_irq_req;
-		req->type = PM_QOS_REQ_AFFINE_CORES;
-		req->cpus_affine = sde_kms->irq_cpu_mask;
-		cpu_irq_latency = sde_kms->catalog->perf.cpu_irq_latency;
-
-		if (pm_qos_request_active(req))
-			pm_qos_update_request(req, cpu_irq_latency);
-		else if (!cpumask_empty(&req->cpus_affine)) {
-			/** If request is not active yet and mask is not empty
-			 *  then it needs to be added initially
-			 */
-			pm_qos_add_request(req, PM_QOS_CPU_DMA_LATENCY,
-					cpu_irq_latency);
-		}
-	} else if (!enable && pm_qos_request_active(&sde_kms->pm_qos_irq_req)) {
-		pm_qos_update_request(&sde_kms->pm_qos_irq_req,
-				PM_QOS_DEFAULT_VALUE);
+	if (pm_qos_request_active(req))
+		pm_qos_update_request(req, SDE_KMS_PM_QOS_CPU_DMA_LATENCY);
+	else if (!cpumask_empty(&req->cpus_affine)) {
+		/** If request is not active yet and mask is not empty
+		 *  then it needs to be added initially
+		 */
+		pm_qos_add_request(req, PM_QOS_CPU_DMA_LATENCY,
+					SDE_KMS_PM_QOS_CPU_DMA_LATENCY);
 	}
+}
 
-	sde_kms->pm_qos_irq_req_en = enable;
-
-	if (!skip_lock)
-		mutex_unlock(&priv->phandle.phandle_lock);
+static void sde_kms_set_default_pm_qos_irq_request(struct sde_kms *sde_kms)
+{
+	if (pm_qos_request_active(&sde_kms->pm_qos_irq_req))
+		pm_qos_update_request(&sde_kms->pm_qos_irq_req,
+					PM_QOS_DEFAULT_VALUE);
 }
 
 static void sde_kms_irq_affinity_notify(
@@ -3323,8 +3228,8 @@ static void sde_kms_irq_affinity_notify(
 	sde_kms->irq_cpu_mask = *mask;
 
 	// request vote with updated irq cpu mask
-	if (sde_kms->pm_qos_irq_req_en)
-		sde_kms_update_pm_qos_irq_request(sde_kms, true, true);
+	if (sde_kms->irq_enabled)
+		sde_kms_update_pm_qos_irq_request(sde_kms);
 
 	mutex_unlock(&priv->phandle.phandle_lock);
 }
@@ -3349,9 +3254,9 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 		sde_kms_init_shared_hw(sde_kms);
 		_sde_kms_set_lutdma_vbif_remap(sde_kms);
 		sde_kms->first_kickoff = true;
-		sde_kms_update_pm_qos_irq_request(sde_kms, true, true);
+		sde_kms_update_pm_qos_irq_request(sde_kms);
 	} else if (event_type == SDE_POWER_EVENT_PRE_DISABLE) {
-		sde_kms_update_pm_qos_irq_request(sde_kms, false, true);
+		sde_kms_set_default_pm_qos_irq_request(sde_kms);
 		sde_irq_update(msm_kms, false);
 		sde_kms->first_kickoff = false;
 	}

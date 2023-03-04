@@ -93,57 +93,6 @@ enum hw_subrev_no {
 char *lge_get_board_subrevision(void);
 enum hw_subrev_no lge_get_board_subrev_no(void);
 
-enum hw_antrev_no{
-  HW_ANT_SKU_KR,                                // 0
-  HW_ANT_SKU_KR_LGU,
-  HW_ANT_SKU_KR_SKT,
-  HW_ANT_SKU_KR_KT,
-  HW_ANT_SKU_JP,
-  HW_ANT_SKU_NA_GSM,                            // 5
-  HW_ANT_SKU_NA_GSM_ATT,
-  HW_ANT_SKU_NA_GSM_TMUS,
-  HW_ANT_SKU_NA_GSM_RESERVED1,
-  HW_ANT_SKU_NA_GSM_RESERVED2,
-  HW_ANT_SKU_NA_CDMA,                           // 10
-  HW_ANT_SKU_NA_CDMA_VZW,
-  HW_ANT_SKU_NA_CDMA_SPR,
-  HW_ANT_SKU_NA_CDMA_RESERVED1,
-  HW_ANT_SKU_NA,
-  HW_ANT_SKU_GLOBAL,                            // 15
-  HW_ANT_SKU_GLOBAL_ASIA,
-  HW_ANT_SKU_GLOBAL_MEA,
-  HW_ANT_SKU_AU_TEL,
-  HW_ANT_SKU_GLOBAL_SCA,
-  HW_ANT_SKU_CN,                                // 20
-  HW_ANT_SKU_KR2,
-  HW_ANT_SKU_KR_LGU2,
-  HW_ANT_SKU_KR_SKT2,
-  HW_ANT_SKU_KR_KT2,
-  HW_ANT_SKU_JP2,                               // 25
-  HW_ANT_SKU_NA_GSM2,
-  HW_ANT_SKU_NA_GSM_ATT2,
-  HW_ANT_SKU_NA_GSM_TMUS2,
-  HW_ANT_SKU_NA_GSM_RESERVED12,
-  HW_ANT_SKU_NA_GSM_RESERVED22,                 // 30
-  HW_ANT_SKU_NA_CDMA2,
-  HW_ANT_SKU_NA_CDMA_VZW2,
-  HW_ANT_SKU_NA_CDMA_SPR2,
-  HW_ANT_SKU_NA_CDMA_RESERVED12,
-  HW_ANT_SKU_NA2,                               // 35
-  HW_ANT_SKU_GLOBAL2,
-  HW_ANT_SKU_GLOBAL_ASIA2,
-  HW_ANT_SKU_GLOBAL_MEA2,
-  HW_ANT_SKU_AU_TEL2,
-  HW_ANT_SKU_GLOBAL_SCA2,                       // 40
-  HW_ANT_SKU_CN2,
-  HW_ANT_SKU_IGNORE,                            // 42
-  HW_ANT_SKU_ERROR,                             // 43
-  HW_ANT_SKU_MAX = HW_ANT_SKU_ERROR
-};
-
-char *lge_get_board_antrevision(void);
-int lge_get_board_antrev_no(void);
-
 extern int lge_get_bootreason(void);
 
 #ifdef CONFIG_MACH_LGE
@@ -193,13 +142,9 @@ enum lge_sku_carrier_type {
   HW_SKU_AU_TEL,
   HW_SKU_GLOBAL_SCA,
   HW_SKU_CN,             // 20
-  HW_SKU_AU_OPEN,
-  HW_SKU_GLOBAL_CERT,
-  HW_SKU_MAX             // 23
+  HW_SKU_MAX             // 21
 };
 
-char *lge_get_sku_carrier_str(void);
-enum lge_sku_carrier_type lge_get_sku_carrier(void);
 /*
 * this enum and string should be sync with ntcode_op_table at
 * android/bootable/bootloader/edk2/QcomModulePkg/Library/LGESharedLib/lge_one_binary.c
@@ -232,6 +177,7 @@ enum lge_laop_operator_type {
   OP_MAX
 };
 
+enum lge_sku_carrier_type lge_get_sku_carrier(void);
 enum lge_laop_operator_type lge_get_laop_operator(void);
 int lge_get_capsensor(void);
 #endif

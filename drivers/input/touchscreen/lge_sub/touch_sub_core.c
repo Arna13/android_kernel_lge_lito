@@ -35,7 +35,7 @@
 
 struct mutex touch_sub_probe_lock;
 
-u32 touch_sub_debug_mask = BASE_INFO;
+u32 touch_sub_debug_mask = 1;
 /* Debug mask value
  * usage: echo [debug_mask] > /sys/module/touch_sub_core/parameters/debug_mask
  */
@@ -47,7 +47,7 @@ static void touch_sub_resume(struct device *dev);
 static irqreturn_t secure_touch_sub_filter_interrupt(struct touch_sub_core_data *ts);
 #endif
 
-void touch_sub_report_cancel_event(struct touch_sub_core_data *ts)
+static void touch_sub_report_cancel_event(struct touch_sub_core_data *ts)
 {
 	u16 old_mask = ts->old_mask;
 	int i = 0;
@@ -74,7 +74,7 @@ void touch_sub_report_cancel_event(struct touch_sub_core_data *ts)
 	input_sync(ts->input);
 }
 
-void touch_sub_report_event(struct touch_sub_core_data *ts)
+static void touch_sub_report_event(struct touch_sub_core_data *ts)
 {
 	u16 old_mask = ts->old_mask;
 	u16 new_mask = ts->new_mask;
@@ -117,7 +117,7 @@ void touch_sub_report_event(struct touch_sub_core_data *ts)
 						   true);
 			input_report_key(ts->input, BTN_TOUCH, 1);
 			input_report_key(ts->input, BTN_TOOL_FINGER, 1);
-
+			input_report_abs(ts->input, ABS_MT_TRACKING_ID, i);
 			input_report_abs(ts->input, ABS_MT_POSITION_X,
 					ts->tdata[i].x);
 			input_report_abs(ts->input, ABS_MT_POSITION_Y,
@@ -146,7 +146,7 @@ void touch_sub_report_event(struct touch_sub_core_data *ts)
 			}
 		} else if (release_mask & (1 << i)) {
 			input_mt_slot(ts->input, i);
-
+			//input_report_abs(ts->input, ABS_MT_TRACKING_ID, -1);
 			input_mt_report_slot_state(ts->input, MT_TOOL_FINGER, false);
 			if (hide_lockscreen_coord) {
 				TOUCH_I(" finger released:<%d>(xxxx,xxxx,xxxx)\n",
@@ -223,16 +223,8 @@ irqreturn_t touch_sub_irq_thread(int irq, void *dev_id)
 	ret = ts->driver->irq_handler(ts->dev);
 
 	if (ret >= 0) {
-		if (ts->intr_status & TOUCH_IRQ_FINGER) {
-#if defined(CONFIG_LGE_TOUCH_SUB_DEX)
-			if (ts->role.use_dex_mode) {
-				if (atomic_read(&ts->state.dex_mode)) {
-					dex_sub_input_handler(ts->dev, ts->input_dex);
-				}
-			}
-#endif
+		if (ts->intr_status & TOUCH_IRQ_FINGER)
 			touch_sub_report_event(ts);
-		}
 
 		if (ts->intr_status & TOUCH_IRQ_KNOCK)
 			touch_sub_send_uevent(ts, TOUCH_UEVENT_KNOCK);
@@ -328,7 +320,6 @@ static void touch_sub_init_work_func(struct work_struct *init_work)
 	mutex_unlock(&ts->lock);
 
 	if (atomic_read(&ts->state.core) == CORE_PROBE) {
-		touch_sub_restore_state(ts);
 		queue_delayed_work(ts->wq, &ts->upgrade_work, 0);
 		return;
 	}
@@ -377,58 +368,6 @@ exit:
 	ts->force_fwup = 0;
 	ts->test_fwpath[0] = '\0';
 }
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-static void touch_app_upgrade_work_func(struct work_struct *app_upgrade_work)
-{
-	struct touch_sub_core_data *ts =
-		container_of(to_delayed_work(app_upgrade_work),
-				struct touch_sub_core_data, app_upgrade_work);
-	int ret;
-
-	TOUCH_TRACE();
-
-	mutex_lock(&ts->lock);
-
-	atomic_set(&ts->state.core, CORE_UPGRADE);
-
-	if (atomic_read(&ts->state.fb) >= FB_SUSPEND) {
-		TOUCH_I("%s: state.fb is not FB_RESUME\n", __func__);
-		goto exit;
-	}
-
-	if ((ts->app_fw_upgrade.offset == 0)
-		|| (ts->app_fw_upgrade.offset > ts->app_fw_upgrade.max_data_size)
-		|| (ts->app_fw_upgrade.data == NULL)) {
-		TOUCH_E("invalid app_fw_upgrade info\n");
-		goto exit;
-	}
-
-	touch_interrupt_control(ts->dev, INTERRUPT_DISABLE);
-	ret = ts->driver->app_upgrade(ts->dev);
-	if (ret < 0) {
-		TOUCH_I("%s: There is no need to reset (ret: %d)\n", __func__, ret);
-		goto exit;
-	}
-
-	ts->driver->power(ts->dev, POWER_OFF);
-	ts->driver->power(ts->dev, POWER_ON);
-	touch_msleep(ts->caps.hw_reset_delay);
-exit:
-	/* init force_upgrade */
-	ts->force_fwup = 0;
-	/* free allocation */
-	ts->app_fw_upgrade.status = APP_FW_UPGRADE_IDLE;
-	ts->app_fw_upgrade.max_data_size = 0;
-	ts->app_fw_upgrade.offset = 0;
-	kfree(ts->app_fw_upgrade.data);
-	ts->app_fw_upgrade.data = NULL;
-	TOUCH_I("%s: clear app_fw_upgrade info\n", __func__);
-
-	mutex_unlock(&ts->lock);
-
-	mod_delayed_work(ts->wq, &ts->init_work, 0);
-}
-#endif
 
 static void touch_sub_fb_work_func(struct work_struct *fb_work)
 {
@@ -469,7 +408,7 @@ static int touch_sub_check_driver_function(struct touch_sub_core_data *ts)
 			ts->driver->upgrade &&
 			ts->driver->esd_recovery &&
 			ts->driver->lpwg &&
-//			ts->driver->swipe_enable &&
+			ts->driver->swipe_enable &&
 			ts->driver->notify &&
 			ts->driver->init_pm &&
 			ts->driver->register_sysfs &&
@@ -527,7 +466,6 @@ static int touch_sub_init_input(struct touch_sub_core_data *ts)
 	}
 
 	input->name = "touch_sub_dev";
-	input->phys = "devices/virtual/input";
 
 	TOUCH_I("%s %d-%d-%d-%d-%d-%d-%d\n", __func__,
 			ts->caps.max_x,
@@ -599,9 +537,6 @@ static void touch_sub_suspend(struct device *dev)
 #endif
 	cancel_delayed_work_sync(&ts->init_work);
 	cancel_delayed_work_sync(&ts->upgrade_work);
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-	cancel_delayed_work_sync(&ts->app_upgrade_work);
-#endif
 	atomic_set(&ts->state.uevent, UEVENT_IDLE);
 	mutex_lock(&ts->lock);
 	touch_sub_report_all_event(ts);
@@ -632,13 +567,12 @@ static void touch_sub_resume(struct device *dev)
 		secure_touch_sub_stop(ts, true);
 #endif
 	mutex_lock(&ts->lock);
-	atomic_set(&ts->state.fb, FB_CHANGED);
+	atomic_set(&ts->state.fb, FB_RESUME);
 	/* if need skip, return value is not 0 in pre_resume */
 	ret = ts->driver->resume(dev);
 	/*[TODO] if pdev->id == 1, call subdev resume*/
 	if (0)
 		ret = md->m_driver.resume(dev);
-	atomic_set(&ts->state.fb, FB_RESUME);
 	mutex_unlock(&ts->lock);
 	TOUCH_I("%s End\n", __func__);
 
@@ -802,86 +736,36 @@ void touch_sub_send_uevent(struct touch_sub_core_data *ts, int type)
 				KOBJ_CHANGE, uevent_str[type]);
 		TOUCH_I("%s\n",  uevent_str[type][0]);
 		touch_sub_report_all_event(ts);
+	} else if (atomic_read(&ts->state.uevent) == UEVENT_IDLE ||
+			touch_sub_check_boot_mode(ts->dev) != TOUCH_NORMAL_BOOT) {
+		pm_wakeup_event(ts->dev, 3000);
+		atomic_set(&ts->state.uevent, UEVENT_BUSY);
+		kobject_uevent_env(&device_uevent_touch.kobj,
+				KOBJ_CHANGE, uevent_str[type]);
+		TOUCH_I("%s\n",  uevent_str[type][0]);
+		touch_sub_report_all_event(ts);
 	} else {
-		reinit_completion(&ts->uevent_complete);
-
-		if (atomic_read(&ts->state.uevent) != UEVENT_IDLE &&
-				touch_sub_check_boot_mode(ts->dev) == TOUCH_NORMAL_BOOT) {
-			TOUCH_I("%s is waiting", uevent_str[type][0]);
-			wait_for_completion_timeout(&ts->uevent_complete, msecs_to_jiffies(UEVENT_TIMEOUT));
-		}
-
-		if (atomic_read(&ts->state.uevent) == UEVENT_IDLE ||
-				touch_sub_check_boot_mode(ts->dev) != TOUCH_NORMAL_BOOT) {
-			pm_wakeup_event(ts->dev, 3000);
-			atomic_set(&ts->state.uevent, UEVENT_BUSY);
-
-			kobject_uevent_env(&device_uevent_touch.kobj,
-					KOBJ_CHANGE, uevent_str[type]);
-			TOUCH_I("%s\n",  uevent_str[type][0]);
-			touch_sub_report_all_event(ts);
-		} else {
-			TOUCH_I("%s  is not sent\n", uevent_str[type][0]);
-		}
+		TOUCH_I("%s  is not sent\n", uevent_str[type][0]);
 	}
 }
 
-static int connection;
-static int wireless;
-static int earjack;
-static int fm_radio;
-
 void touch_sub_notify_connect(u32 type)
 {
-	connection = type;
 	touch_sub_atomic_notifier_call(NOTIFY_CONNECTION, &type);
 }
 EXPORT_SYMBOL(touch_sub_notify_connect);
 
 void touch_sub_notify_wireless(u32 type)
 {
-	wireless = type;
 	touch_sub_atomic_notifier_call(NOTIFY_WIRELESS, &type);
 }
 EXPORT_SYMBOL(touch_sub_notify_wireless);
 
 void touch_sub_notify_earjack(u32 type)
 {
-	earjack = type;
 	touch_sub_atomic_notifier_call(NOTIFY_EARJACK, &type);
 }
 EXPORT_SYMBOL(touch_sub_notify_earjack);
-void touch_sub_notify_fm_radio(u32 type)
-{
-	fm_radio = type;
-	touch_sub_atomic_notifier_call(NOTIFY_FM_RADIO, &type);
-}
-EXPORT_SYMBOL(touch_sub_notify_fm_radio);
-
-void touch_sub_restore_state(struct touch_sub_core_data *ts) {
-
-	TOUCH_TRACE();
-
-	if (atomic_read(&ts->state.connect) != connection) {
-		TOUCH_I("%s: need to restore connection (%d)\n", __func__, connection);
-		touch_sub_notify_connect(connection);
-	}
-
-	if (atomic_read(&ts->state.wireless) != wireless) {
-		TOUCH_I("%s: need to restore wireless (%d)\n", __func__, wireless);
-		touch_sub_notify_wireless(wireless);
-	}
-
-	if (atomic_read(&ts->state.earjack) != earjack) {
-		TOUCH_I("%s: need to restore earjack (%d)\n", __func__, earjack);
-		touch_sub_notify_earjack(earjack);
-	}
-
-	if (atomic_read(&ts->state.fm_radio) != fm_radio) {
-		TOUCH_I("%s: need to restore fm_radio (%d)\n", __func__, fm_radio);
-		touch_sub_notify_fm_radio(fm_radio);
-	}
-}
 
 static int touch_sub_notify(struct touch_sub_core_data *ts,
 				   unsigned long event, void *data)
@@ -927,10 +811,6 @@ static int touch_sub_notify(struct touch_sub_core_data *ts,
 			atomic_set(&ts->state.earjack, *(int *)data);
 			ret = ts->driver->notify(ts->dev, event, data);
 			break;
-		case NOTIFY_FM_RADIO:
-			atomic_set(&ts->state.fm_radio, *(int *)data);
-			ret = ts->driver->notify(ts->dev, event, data);
-			break;
 
 		default:
 			ret = ts->driver->notify(ts->dev, event, data);
@@ -961,12 +841,7 @@ static int display_notify(struct touch_sub_core_data *ts,
 		return 0;
 	}
 
-	if (atomic_read(&ts->state.core) == CORE_SHUTDOWN) {
-		TOUCH_I("%s: skip in shutdown state\n", __func__);
-		return 0;
-	}
-
-	if (ts->driver->notify && panel_data->display_id) { //panel_data->display_id : 1(sub_panel)
+	if (ts->driver->notify) {
 		mutex_lock(&ts->lock);
 		switch (event) {
 		case LGE_PANEL_EVENT_BLANK:
@@ -1064,10 +939,6 @@ static int touch_sub_atomic_notifier_callback(struct notifier_block *this,
 		arr[ATOMIC_NOTIFY_EARJACK].event = event;
 		arr[ATOMIC_NOTIFY_EARJACK].data = *(int *)data;
 		break;
-	case NOTIFY_FM_RADIO:
-		arr[ATOMIC_NOTIFY_FM_RADIO].event = event;
-		arr[ATOMIC_NOTIFY_FM_RADIO].data = *(int *)data;
-		break;
 	default:
 		TOUCH_I("%s: unknown event(%lu)\n", __func__, event);
 		return 0;
@@ -1133,13 +1004,9 @@ static int touch_sub_init_works(struct touch_sub_core_data *ts)
 
 	INIT_DELAYED_WORK(&ts->init_work, touch_sub_init_work_func);
 	INIT_DELAYED_WORK(&ts->upgrade_work, touch_sub_upgrade_work_func);
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-	INIT_DELAYED_WORK(&ts->app_upgrade_work, touch_app_upgrade_work_func);
-#endif
 	INIT_DELAYED_WORK(&ts->notify_work, touch_sub_atomic_notifer_work_func);
 	INIT_DELAYED_WORK(&ts->fb_work, touch_sub_fb_work_func);
 	INIT_DELAYED_WORK(&ts->panel_reset_work, touch_sub_panel_reset_work_func);
-	init_completion(&ts->uevent_complete);
 
 	return 0;
 }
@@ -1273,7 +1140,7 @@ static int touch_sub_core_probe_normal(struct platform_device *pdev)
 
 		if (plist_sub->touch_sub_core_data != NULL) {
 			touch_sub_init_sysfs_module(md, plist_sub->touch_sub_core_data);
-#ifdef CONFIG_LGE_TOUCH_SUB_PEN
+#ifdef CONFIG_LGE_TOUCH_PEN
 			ts = (struct touch_sub_core_data *) plist_sub->touch_sub_core_data;
 			if (ts->driver->pen_func != NULL) {
 				ts->driver->pen_func = md->m_driver.func;
@@ -1325,14 +1192,6 @@ static int touch_sub_core_probe_normal(struct platform_device *pdev)
 		goto error_init_input;
 	}
 
-#if defined(CONFIG_LGE_TOUCH_SUB_DEX)
-	if (ts->role.use_dex_mode) {
-		ret = dex_sub_input_init(ts->dev);
-		if (ret < 0) {
-			goto error_init_input;
-		}
-	}
-#endif
 	ret = touch_sub_request_irq(ts->irq, touch_sub_irq_handler,
 			touch_sub_irq_thread, ts->irqflags | IRQF_ONESHOT,
 			LGE_TOUCH_SUB_NAME, ts);

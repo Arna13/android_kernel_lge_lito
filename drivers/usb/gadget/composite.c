@@ -559,14 +559,14 @@ static u8 encode_bMaxPower(enum usb_device_speed speed,
 		val = CONFIG_USB_GADGET_VBUS_DRAW;
 	if (!val)
 		return 0;
-	if (speed < USB_SPEED_SUPER)
-		return min(val, 500U) / 2;
-	else
-		/*
-		 * USB 3.x supports up to 900mA, but since 900 isn't divisible
-		 * by 8 the integral division will effectively cap to 896mA.
-		 */
-		return min(val, 900U) / 8;
+	switch (speed) {
+	case USB_SPEED_SUPER:
+	case USB_SPEED_SUPER_PLUS:
+		return (u8)(val / 8);
+	default:
+		/* only SuperSpeed and faster support > 500mA */
+		return DIV_ROUND_UP(min(val, 500U), 2);
+	}
 }
 
 static int config_buf(struct usb_configuration *config,
@@ -991,8 +991,7 @@ static int set_config(struct usb_composite_dev *cdev,
 	power = c->MaxPower ? c->MaxPower : CONFIG_USB_GADGET_VBUS_DRAW;
 	if (gadget->speed < USB_SPEED_SUPER)
 		power = min(power, 500U);
-	else
-		power = min(power, 900U);
+
 done:
 	usb_gadget_vbus_draw(gadget, power);
 	if (result >= 0 && cdev->delayed_status)
@@ -1553,6 +1552,14 @@ static int composite_ep0_queue(struct usb_composite_dev *cdev,
 
 static int count_ext_compat(struct usb_configuration *c)
 {
+#ifdef CONFIG_LGE_USB
+	/*
+	 * NOTE: On Windows 10, if you respond to more than one
+	 * "extended compatibility ID", there is a problem that
+	 * the USB is not recognized.
+	 */
+	return 1;
+#else
 	int i, res;
 
 	res = 0;
@@ -1572,16 +1579,8 @@ static int count_ext_compat(struct usb_configuration *c)
 		}
 	}
 	BUG_ON(res > 255);
-#ifdef CONFIG_LGE_USB
-	/*
-	 * NOTE: On Windows 10, if you respond to more than one
-	 * "extended compatibility ID", there is a problem that
-	 * the USB is not recognized.
-	 */
-	if (res > 1)
-		return 1;
-#endif
 	return res;
+#endif
 }
 
 static int fill_ext_compat(struct usb_configuration *c, u8 *buf)
@@ -1601,6 +1600,20 @@ static int fill_ext_compat(struct usb_configuration *c, u8 *buf)
 			if (i != f->os_desc_table[j].if_id)
 				continue;
 			d = f->os_desc_table[j].os_desc;
+#ifdef CONFIG_LGE_USB
+			/*
+			 * NOTE: On Windows 10, if you respond to more than one
+			 * "extended compatibility ID", there is a problem that
+			 * the USB is not recognized.
+			 */
+			if (d && d->ext_compat_id && d->ext_compat_id[0]) {
+				*buf++ = i;
+				*buf++ = 0x01;
+				memcpy(buf, d->ext_compat_id, 16);
+				count += 24;
+				break;
+			}
+#else
 			if (d && d->ext_compat_id) {
 				*buf++ = i;
 				*buf++ = 0x01;
@@ -1614,8 +1627,23 @@ static int fill_ext_compat(struct usb_configuration *c, u8 *buf)
 			count += 24;
 			if (count + 24 >= USB_COMP_EP0_OS_DESC_BUFSIZ)
 				return count;
+#endif
 		}
 	}
+#ifdef CONFIG_LGE_USB
+	/*
+	 * NOTE: On Windows 10, there is a problem that USB recognition is not
+	 * possible without "extended compatibility ID". If there is no
+	 * "extended compatibility ID" to respond, "No compatible or
+	 * sub-compatible ID" is returned. "No compatible or sub-compatible ID"
+	 * is "(0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00)".
+	 */
+	if (count == 16) {
+		++buf;
+		*buf = 0x01;
+		count += 24;
+	}
+#endif
 
 	return count;
 }
@@ -1624,9 +1652,6 @@ static int count_ext_prop(struct usb_configuration *c, int interface)
 {
 	struct usb_function *f;
 	int j;
-
-	if (interface >= c->next_interface_id)
-		return -EINVAL;
 
 	f = c->interface[interface];
 	for (j = 0; j < f->os_desc_n; ++j) {
@@ -1646,9 +1671,6 @@ static int len_ext_prop(struct usb_configuration *c, int interface)
 	struct usb_function *f;
 	struct usb_os_desc *d;
 	int j, res;
-
-	if (interface >= c->next_interface_id)
-		return -EINVAL;
 
 	res = 10; /* header length */
 	f = c->interface[interface];
@@ -2075,8 +2097,6 @@ unknown:
 				buf[6] = w_index;
 				count = count_ext_prop(os_desc_cfg,
 					interface);
-				if (count < 0)
-					return count;
 				put_unaligned_le16(count, buf + 8);
 				count = len_ext_prop(os_desc_cfg,
 					interface);
@@ -2534,13 +2554,10 @@ void composite_resume(struct usb_gadget *gadget)
 				f->resume(f);
 		}
 
-		maxpower = cdev->config->MaxPower ?
-			cdev->config->MaxPower : CONFIG_USB_GADGET_VBUS_DRAW;
+		maxpower = cdev->config->MaxPower;
+		maxpower = maxpower ? maxpower : CONFIG_USB_GADGET_VBUS_DRAW;
 		if (gadget->speed < USB_SPEED_SUPER)
 			maxpower = min(maxpower, 500U);
-		else
-			maxpower = min(maxpower, 900U);
-
 		usb_gadget_vbus_draw(gadget, maxpower);
 	}
 

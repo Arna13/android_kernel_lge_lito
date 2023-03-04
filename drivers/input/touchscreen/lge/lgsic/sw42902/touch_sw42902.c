@@ -595,10 +595,7 @@ static int sw42902_power(struct device *dev, int ctrl)
 		TOUCH_I("%s, HW reset\n", __func__);
 		sw42902_reset_ctrl(dev, HW_RESET_ASYNC);
 		break;
-	case POWER_HW_RESET_SYNC:
-		TOUCH_I("%s, HW reset\n", __func__);
-		sw42902_reset_ctrl(dev, HW_RESET_SYNC);
-		break;
+
 	case POWER_SW_RESET:
 		sw42902_reset_ctrl(dev, SW_RESET);
 		break;
@@ -1854,11 +1851,10 @@ static int sw42902_clock(struct device *dev, u32 onoff)
 		touch_msleep(1);
 
 		//osc_pd_n
-		reg_val = 0;
-
-		sw42902_reg_write(dev, SPI_OSC_CTL, &reg_val, sizeof(reg_val));
-
-		TOUCH_I("SPI_OSC_CTL(0x%x) value(0x%x) >>> \n", SPI_OSC_CTL, reg_val);
+		sw42902_reg_read(dev, SYS_OSC_CTL, &reg_val , sizeof(reg_val));
+		reg_val &= ~(osc_pd_n);
+		sw42902_reg_write(dev, SYS_OSC_CTL, &reg_val, sizeof(reg_val));
+		TOUCH_I("SYS_OSC_CTL(0x%x) value(0x%x) osc_pd_n(0x%x) >>> \n", SYS_OSC_CTL, reg_val, osc_pd_n);
 
 		atomic_set(&ts->state.sleep, IC_DEEP_SLEEP);
 
@@ -2864,14 +2860,9 @@ static int sw42902_probe(struct device *dev)
 	TOUCH_I("sw42902 probe\n");
 
 	d = devm_kzalloc(dev, sizeof(*d), GFP_KERNEL);
-	if (!d) {
-		TOUCH_E("failed to allocate sw42902_data\n");
-		return -ENOMEM;
-	}
-
 	tpen = kzalloc(sizeof(struct pen_data), GFP_KERNEL);
-	if (!tpen) {
-		TOUCH_E("failed to allocate pen_data\n");
+	if (!d) {
+		TOUCH_E("failed to allocate synaptics data\n");
 		return -ENOMEM;
 	}
 
@@ -4921,7 +4912,7 @@ static int sw42902_irq_read_data(struct device *dev)
 		if(ret < 0) {
 			TOUCH_E("Register read fail\n");
 			d->err_cnt++;
-			ret = -EHWRESET_ASYNC;
+			ret = -EGLOBALRESET;
 			goto error;
 		}
 
@@ -4962,7 +4953,7 @@ static int sw42902_irq_read_data(struct device *dev)
 	if(ret < 0) {
 		TOUCH_E("Register read fail\n");
 		d->err_cnt++;
-		ret = -EHWRESET_ASYNC;
+		ret = -EGLOBALRESET;
 		goto error;
 	}
 
@@ -5986,9 +5977,10 @@ static struct touch_hwif hwif = {
 
 static int __init touch_device_init(void)
 {
+	int maker = 0;
 	TOUCH_TRACE();
 
-	if (!is_ddic_name(0, "sw43103")) {
+	if (!is_ddic_name("sw43103")) {
 		TOUCH_I("%s, ddic sw43103 not found.\n", __func__);
 		return 0;
 	}
@@ -6001,7 +5993,7 @@ static int __init touch_device_init(void)
 		return 0;
 	}
 */
-	TOUCH_I("%s, sw42902 detected.\n", __func__);
+	TOUCH_I("%s, sw42902 detected: touch_id:%d\n", __func__, maker);
 
 /*
 	if (lge_get_boot_mode() == LGE_BOOT_MODE_CHARGERLOGO) {

@@ -15,10 +15,6 @@
 #include "lge_brightness.h"
 #include "lge_dsi_panel.h"
 
-#if IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
-#include "../secondary/lge_backlight_secondary.h"
-#endif
-
 #if IS_ENABLED(CONFIG_LGE_DUAL_SCREEN)
 #include "../ds3/lge_backlight_ds3.h"
 extern bool is_ds_connected(void);
@@ -34,11 +30,7 @@ char *blmap_names[] = {
 	"lge,blmap-ex",
 	"lge,dynamic-blmap-brighter",
 	"lge,blmap-hdr",
-	"lge,blmap-vr",
-	"lge,blmap-daylight",
-	"lge,blmap-hdr-daylight",
-	"lge,blmap-br-sync",
-	"lge,blmap-hdr-br-sync"
+	"lge,blmap-vr"
 };
 
 static const int blmap_names_num = sizeof(blmap_names)/sizeof(blmap_names[0]);
@@ -155,7 +147,7 @@ struct lge_blmap *lge_get_blmap(struct dsi_panel *panel, enum lge_blmap_type typ
 		type = LGE_BLMAP_DEFAULT;
 
 	blmap = &panel->lge.blmap_list[type];
-	if (!blmap || blmap->size == 0)
+	if (!blmap)
 		blmap = &panel->lge.blmap_list[LGE_BLMAP_DEFAULT];
 
 	return blmap;
@@ -166,15 +158,14 @@ int lge_update_backlight(struct dsi_panel *panel)
 	struct dsi_display *display;
 	struct sde_connector *c_conn;
 	struct backlight_device *bd;
-	int rc = 0;
+	int rc = 0, req_lvl = 0;
+
 
 	if (panel == NULL || panel->host == NULL)
 		return -EINVAL;
 
 	bd = panel->bl_config.raw_bd;
-	display = container_of(panel->host, struct dsi_display, host);
-
-	if (bd == NULL || display == NULL)
+	if (bd == NULL)
 		return -EINVAL;
 
 	if (panel->lge.allow_bl_update || !lge_dsi_panel_is_power_on_interactive(panel))
@@ -182,26 +173,32 @@ int lge_update_backlight(struct dsi_panel *panel)
 
 	c_conn = bl_get_data(bd);
 
+	req_lvl = panel->lge.bl_lvl_unset;
 	if (panel->bl_config.type != DSI_BACKLIGHT_WLED)
 		mutex_lock(&bd->ops_lock);
-
-	mutex_lock(&display->display_lock);
 	if (panel->lge.bl_lvl_unset < 0) {
 		rc = 0;
 		goto exit;
 	}
 
+	display = container_of(panel->host, struct dsi_display, host);
 
 	rc = dsi_display_set_backlight(&c_conn->base, display, panel->lge.bl_lvl_unset);
 	if (!rc) {
-		pr_info("[%s] <--%pS unset=%d\n", panel->type, __builtin_return_address(0), panel->lge.bl_lvl_unset);
+		pr_info("<--%pS unset=%d\n", __builtin_return_address(0), panel->lge.bl_lvl_unset);
+	}
+	if (req_lvl != panel->lge.bl_lvl_unset) {
+		pr_err("LGE-DBG:%s] update once again before reset (lvl=%d) \n", __func__, panel->lge.bl_lvl_unset);
+		rc = dsi_display_set_backlight(&c_conn->base, display, panel->lge.bl_lvl_unset);
+		if (!rc) {
+			pr_info("<--%pS unset=%d\n", __builtin_return_address(0), panel->lge.bl_lvl_unset);
+		}
 	}
 
 	panel->lge.allow_bl_update = true;
 	panel->lge.bl_lvl_unset = -1;
 
 exit:
-	mutex_unlock(&display->display_lock);
 	if (panel->bl_config.type != DSI_BACKLIGHT_WLED)
 		mutex_unlock(&bd->ops_lock);
 	return rc;
@@ -221,17 +218,13 @@ int lge_backlight_device_update_status(struct backlight_device *bd)
 
 	brightness = bd->props.brightness;
 
-	c_conn = bl_get_data(bd);
-	display = (struct dsi_display *) c_conn->display;
-	panel = display->panel;
-
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_DIMMING_BOOT_SUPPORT)
 	if (lge_get_bootreason_with_lcd_dimming() && !is_blank_called() && brightness > 0) {
 		brightness = 1;
-		pr_info("[%s] lcd dimming mode. set value = %d\n", panel->type, brightness);
+		pr_info("lcd dimming mode. set value = %d\n", brightness);
 	} else if (is_factory_cable()  && !is_blank_called() && brightness > 0) {
 		brightness =  1;
-		pr_info("[%s] Detect factory cable. set value = %d\n", panel->type, brightness);
+		pr_info("Detect factory cable. set value = %d\n", brightness);
 	}
 #endif
 
@@ -240,24 +233,18 @@ int lge_backlight_device_update_status(struct backlight_device *bd)
 			(bd->props.state & BL_CORE_SUSPENDED))
 		brightness = 0;
 
-	if ((panel->lge.lp_state == LGE_PANEL_LP2) || (panel->lge.lp_state == LGE_PANEL_LP1)) {
-		bl_type = LGE_BLMAP_EX;
-	} else if (panel->lge.vr_lp_mode) {
+	c_conn = bl_get_data(bd);
+	display = (struct dsi_display *) c_conn->display;
+	panel = display->panel;
+
+	if (panel->lge.vr_lp_mode) {
 		bl_type = LGE_BLMAP_VR;
 	} else if (panel->lge.hdr_mode) {
 		bl_type = LGE_BLMAP_HDR;
-		if (panel->lge.daylight_mode)
-			bl_type = LGE_BLMAP_HDR_DAYLIGHT;
-		else if (panel->lge.br_sync_mode)
-			bl_type = LGE_BLMAP_HDR_BR_SYNC;
 	} else if (panel->lge.use_color_manager && panel->lge.video_enhancement) {
 		bl_type = LGE_BLMAP_VE;
-	} else if (panel->lge.br_sync_mode) {
-		bl_type = LGE_BLMAP_BR_SYNC;
 	} else if (panel->lge.use_dynamic_brightness && panel->lge.brightness_table) {
 		bl_type = LGE_BLMAP_BRIGHTER;
-	} else if (panel->lge.daylight_mode){
-		bl_type = LGE_BLMAP_DAYLIGHT;
 	} else {
 		bl_type = LGE_BLMAP_DEFAULT;
 	}
@@ -267,12 +254,6 @@ int lge_backlight_device_update_status(struct backlight_device *bd)
 	if (panel->lge.br_offset != 0 && is_ds_connected()) {
 		brightness = br_to_offset_br_ds3(panel, brightness, blmap->size - 1, BR_MD);
 	}
-#endif
-
-#if IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
-	if (primary_display->panel->lge.br_sync_mode && panel->lge.br_offset
-				&& lge_dsi_panel_is_power_on_interactive(secondary_display->panel))
-			brightness = br_to_offset_br_sec(panel, brightness, blmap->size - 1);
 #endif
 
 	if (blmap) {
@@ -303,7 +284,7 @@ int lge_backlight_device_update_status(struct backlight_device *bd)
 	}
 
 	mutex_lock(&display->display_lock);
-	if (panel->lge.allow_bl_update) { //TODO : Discuss condition state.
+	if (panel->lge.lp_state == LGE_PANEL_NOLP && panel->lge.allow_bl_update) {
 		panel->lge.bl_lvl_unset = -1;
 		if (c_conn->ops.set_backlight) {
 			/* skip notifying user space if bl is 0 */
@@ -315,14 +296,14 @@ int lge_backlight_device_update_status(struct backlight_device *bd)
 			}
 			rc = c_conn->ops.set_backlight(&c_conn->base, c_conn->display, bl_lvl);
 			c_conn->unset_bl_level = 0;
-			pr_info("[%s] BR:%d BL:%d %s\n", panel->type, brightness, bl_lvl, lge_get_blmapname(bl_type));
+			pr_info("BR:%d BL:%d %s\n", brightness, bl_lvl, lge_get_blmapname(bl_type));
 		}
 	} else if (!panel->lge.allow_bl_update) {
 		panel->lge.bl_lvl_unset = bl_lvl;
-		pr_info("[%s] brightness = %d, bl_lvl = %d -> differed (not allow) %s\n", panel->type, brightness, bl_lvl, lge_get_blmapname(bl_type));
+		pr_info("brightness = %d, bl_lvl = %d -> differed (not allow) %s\n", brightness, bl_lvl, lge_get_blmapname(bl_type));
 	} else {
 		panel->lge.bl_lvl_unset = bl_lvl;
-		pr_info("[%s] brightness = %d, bl_lvl = %d -> differed %s\n", panel->type, brightness, bl_lvl, lge_get_blmapname(bl_type));
+		pr_info("brightness = %d, bl_lvl = %d -> differed %s\n", brightness, bl_lvl, lge_get_blmapname(bl_type));
 	}
 	mutex_unlock(&display->display_lock);
 
@@ -382,7 +363,7 @@ int dsi_panel_update_backlight(struct dsi_panel *panel,
 	int rc = 0;
 	struct mipi_dsi_device *dsi;
 
-	pr_info("[%s]: bl_lvl(%d)\n", panel->type, bl_lvl);
+	pr_info("%s: bl_lvl(%d)\n", __func__, bl_lvl);
 
 	if (!panel || (bl_lvl > 0xffff)) {
 		pr_err("invalid params\n");
@@ -447,7 +428,7 @@ static ssize_t irc_brighter_store(struct device *dev,
 	}
 
 	sscanf(buf, "%d", &input);
-	pr_info("[%s] input data %d\n", panel->type, input);
+	pr_info("input data %d\n", input);
 
 	mutex_lock(&panel->panel_lock);
 	if(!dsi_panel_initialized(panel) &&
@@ -537,17 +518,15 @@ static ssize_t brightness_table_store(struct device *dev,
 	struct dsi_panel *panel;
 	struct dsi_display *display;
 	int input;
-	struct backlight_device *bd;
 
 	panel = dev_get_drvdata(dev);
-	if (!panel || !panel->bl_config.raw_bd) {
+	if (!panel) {
 		pr_err("panel is NULL\n");
 		return -EINVAL;
 	}
 
-	bd = panel->bl_config.raw_bd;
 	sscanf(buf, "%d", &input);
-	pr_info("[%s] input data %d\n", panel->type, input);
+	pr_info("input data %d\n", input);
 
 	mutex_lock(&panel->panel_lock);
 	if(!dsi_panel_initialized(panel)) {
@@ -573,9 +552,8 @@ static ssize_t brightness_table_store(struct device *dev,
 	panel->lge.brightness_table = input;
 	mutex_unlock(&panel->panel_lock);
 
-	mutex_lock(&bd->ops_lock);
 	lge_backlight_device_update_status(panel->bl_config.raw_bd);
-	mutex_unlock(&bd->ops_lock);
+
 	return ret;
 }
 static DEVICE_ATTR(brightness_table, S_IRUGO | S_IWUSR | S_IWGRP, brightness_table_show, brightness_table_store);
@@ -615,7 +593,7 @@ static ssize_t fp_lhbm_store(struct device *dev,
 	}
 
 	sscanf(buf, "%d", &input);
-	pr_info("[%s] input data %d\n", panel->type, input);
+	pr_info("input data %d\n", input);
 
 retry_lhbm:
 	mutex_lock(&panel->panel_lock);
@@ -693,7 +671,7 @@ static ssize_t fp_lhbm_br_lvl_store(struct device *dev,
 	}
 
 	sscanf(buf, "%d", &input);
-	pr_info("[%s] input data %d\n", panel->type, input);
+	pr_info("input data %d\n", input);
 
 	mutex_lock(&panel->panel_lock);
 	if(!dsi_panel_initialized(panel)) {
@@ -757,7 +735,7 @@ static ssize_t tc_perf_store(struct device *dev,
 	}
 
 	sscanf(buf, "%d", &input);
-	pr_info("[%s] input data %d\n", panel->type, input);
+	pr_info("input data %d\n", input);
 
 	mutex_lock(&panel->panel_lock);
 	if(!dsi_panel_initialized(panel)) {
@@ -788,7 +766,7 @@ static ssize_t tc_perf_store(struct device *dev,
 }
 static DEVICE_ATTR(tc_perf, S_IRUGO | S_IWUSR | S_IWGRP, tc_perf_show, tc_perf_store);
 
-#if IS_ENABLED(CONFIG_LGE_DUAL_SCREEN) || IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
+#if IS_ENABLED(CONFIG_LGE_DUAL_SCREEN)
 static ssize_t br_offset_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -800,19 +778,8 @@ static ssize_t br_offset_show(struct device *dev,
 		pr_err("panel is NULL\n");
 		return ret;
 	}
-#if IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
-	if (!secondary_display || !secondary_display->panel) {
-		pr_err("secondary_display is NULL\n");
-		return -EINVAL;
-	}
 
-	if (panel->lge.br_offset)
-		return sprintf(buf, "%d\n", panel->lge.br_offset);
-	else
-		return sprintf(buf, "%d\n", secondary_display->panel->lge.br_offset);
-#else
 	return sprintf(buf, "%d\n", panel->lge.br_offset);
-#endif
 }
 
 static ssize_t br_offset_store(struct device *dev,
@@ -821,10 +788,7 @@ static ssize_t br_offset_store(struct device *dev,
 	ssize_t ret = strnlen(buf, PAGE_SIZE);
 	struct dsi_panel *panel;
 	int data;
-	bool connect = false;
-#if IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
-	struct backlight_device *bd;
-#endif
+	bool connect = false, update = false;
 
 	panel = dev_get_drvdata(dev);
 	if (!panel) {
@@ -834,16 +798,7 @@ static ssize_t br_offset_store(struct device *dev,
 
 	sscanf(buf, "%d", &data);
 
-#if IS_ENABLED(CONFIG_LGE_DUAL_SCREEN)
 	if (is_ds_connected()) {
-#elif IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
-	if (!secondary_display || !secondary_display->panel || !secondary_display->panel->bl_config.raw_bd) {
-		pr_err("secondary_display is NULL\n");
-		return -EINVAL;
-	}
-	bd = secondary_display->panel->bl_config.raw_bd;
-	if (lge_dsi_panel_is_power_on_interactive(secondary_display->panel)) {
-#endif
 		connect = true;
 	}
 
@@ -853,110 +808,24 @@ static ssize_t br_offset_store(struct device *dev,
 		return ret;
 	}
 
-#if IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
-	if(connect) {
-		secondary_display->panel->lge.br_offset_update = true;
-		secondary_display->panel->lge.br_offset = data;
-		mutex_lock(&bd->ops_lock);
-		lge_backlight_device_update_status(secondary_display->panel->bl_config.raw_bd);
-		mutex_unlock(&bd->ops_lock);
-		secondary_display->panel->lge.br_offset_update = false;
-	}
-
-	if (data > 0) {
-		panel->lge.br_offset = data;
-		secondary_display->panel->lge.br_offset = 0;
-	} else {
-		panel->lge.br_offset = 0;
-		secondary_display->panel->lge.br_offset = data;
-	}
-
-	pr_info("request=[%d][%d]\n", panel->lge.br_offset, secondary_display->panel->lge.br_offset);
-#else
 	panel->lge.br_offset = data;
 	pr_info("request=%d\n", panel->lge.br_offset);
-#endif
 
-	if (panel->lge.br_offset_bypass)
-		panel->lge.br_offset_bypass = false;
+	if (update) {
+		if (panel->lge.br_offset_bypass)
+			panel->lge.br_offset_bypass = false;
+		panel->lge.br_offset_update = true;
+		panel->lge.br_offset_update = false;
+	}
 
 	return ret;
 }
 static DEVICE_ATTR(br_offset, S_IRUGO | S_IWUSR | S_IWGRP, br_offset_show, br_offset_store);
 #endif
 
-#if IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
-static ssize_t br_sync_mode_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct dsi_panel *panel;
-	int ret = 0;
-
-	panel = dev_get_drvdata(dev);
-	if (!panel) {
-		pr_err("panel is NULL\n");
-		return ret;
-	}
-
-	if (!secondary_display || !secondary_display->panel) {
-		pr_err("secondary_display is NULL\n");
-		return -EINVAL;
-	}
-
-	return sprintf(buf, "%d\n", panel->lge.br_sync_mode);
-}
-
-static ssize_t br_sync_mode_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	ssize_t ret = strnlen(buf, PAGE_SIZE);
-	struct dsi_panel *panel;
-	int data;
-	struct backlight_device *primary_bd;
-	struct backlight_device *secondary_bd;
-
-	panel = dev_get_drvdata(dev);
-	if (!panel || !panel->bl_config.raw_bd) {
-		pr_err("panel is NULL\n");
-		return -EINVAL;
-	}
-
-	if (!secondary_display || !secondary_display->panel || !secondary_display->panel->bl_config.raw_bd) {
-		pr_err("secondary_display is NULL\n");
-		return -EINVAL;
-	}
-
-	primary_bd = panel->bl_config.raw_bd;
-	secondary_bd = secondary_display->panel->bl_config.raw_bd;
-
-	sscanf(buf, "%d", &data);
-
-	panel->lge.br_sync_mode = !!data;
-
-	pr_info("request=%d\n", panel->lge.br_sync_mode);
-
-	mutex_lock(&primary_bd->ops_lock);
-	lge_backlight_device_update_status(panel->bl_config.raw_bd);
-	mutex_unlock(&primary_bd->ops_lock);
-
-	if (secondary_display && secondary_display->panel &&
-		lge_dsi_panel_is_power_on_interactive(secondary_display->panel) &&
-		secondary_display->panel->lge.br_offset) {
-		mutex_lock(&secondary_bd->ops_lock);
-		lge_backlight_device_update_status(secondary_display->panel->bl_config.raw_bd);
-		mutex_unlock(&secondary_bd->ops_lock);
-	}
-	return ret;
-}
-static DEVICE_ATTR(br_sync_mode, S_IRUGO | S_IWUSR | S_IWGRP, br_sync_mode_show, br_sync_mode_store);
-#endif
-
 static struct attribute *brightness_attrs[] = {
-#if IS_ENABLED(CONFIG_LGE_DUAL_SCREEN) || IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
+#if IS_ENABLED(CONFIG_LGE_DUAL_SCREEN)
 	&dev_attr_br_offset.attr,
-#endif
-#if IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
-	&dev_attr_br_sync_mode.attr,
 #endif
 	NULL,
 };

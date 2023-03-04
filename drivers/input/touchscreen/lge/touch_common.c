@@ -84,3 +84,4 @@ int touch_snprintf(char *buf, int size, const char *fmt, ...)
 
 	return ret;
 }
+

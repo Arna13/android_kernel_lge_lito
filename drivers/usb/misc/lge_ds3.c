@@ -56,9 +56,6 @@ module_param(use_primary_usb, bool, 0644);
 static bool usb_sudden_disconnect_check;
 module_param(usb_sudden_disconnect_check, bool, 0644);
 
-static bool ds_recovery_store_check;
-module_param(ds_recovery_store_check, bool, 0644);
-
 static bool usb_2nd_host_test;
 module_param(usb_2nd_host_test, bool, 0644);
 
@@ -481,9 +478,6 @@ static int ds3_dp_hpd(struct ds3 *ds3, bool hpd)
 	dev_info(dev, "%s: is_dp_hpd_high:%d hpd: %d\n", __func__,
 			ds3->is_dp_hpd_high, hpd);
 
-	if (ds3->is_dp_hpd_high && hpd)
-		ds3_dp_hpd(ds3, false);
-
 	if (ds3->is_dp_hpd_high == hpd) {
 		dev_dbg(dev, "%s: duplicated value is set\n", __func__);
 		return 0;
@@ -805,9 +799,6 @@ static void ds3_sm(struct work_struct *w)
 				ds_state_strings[ds3->current_state],
 				ds3->is_ds_recovery);
 
-		if (ds3->is_ds_recovery > ds_power_recovery_count)
-			ds3_dp_hpd(ds3, false);
-
 		ds3->is_ds_recovery--;
 		ds_set_state(ds3, STATE_DS_RECOVERY_POWER_OFF);
 		break;
@@ -824,13 +815,6 @@ static void ds3_sm(struct work_struct *w)
 			break;
 		}
 #endif
-
-		if (ds3->is_ds_recovery > ds_power_recovery_count) {
-			ds3->current_state = STATE_DS_RECOVERY_POWER_ON;
-			kick_sm(ds3, 0);
-			break;
-		}
-
 		// Power Off
 		if (ds3->ds_en) {
 			gpiod_direction_output(ds3->ds_en, 0);
@@ -857,12 +841,6 @@ static void ds3_sm(struct work_struct *w)
 			 break;
 		 }
 #endif
-
-		if (ds3->is_ds_recovery > ds_power_recovery_count) {
-			ds_set_state(ds3, STATE_DS_RECOVERY_USB_WAIT);
-			break;
-		}
-
 		if (ds3->ds_en) {
 			gpiod_direction_output(ds3->ds_en, 1);
 		} else if (ds3->vconn) {
@@ -1066,9 +1044,10 @@ static ssize_t ds2_hal_ready_store(struct device *dev,
 
 	ds3->is_ds_hal_ready = true;
 
-	if (ds3->is_ds_recovery || ds3->current_state == STATE_DS_RECOVERY)
+	if (ds3->is_ds_recovery || ds3->current_state == STATE_DS_RECOVERY) {
+		ds3->is_ds_recovery = 0;
 		request_dualscreen_recovery();
-	ds3->is_ds_recovery = 0;
+	}
 	ds_set_state(ds3, STATE_DS_READY);
 
 	return size;
@@ -1133,11 +1112,7 @@ static ssize_t ds2_recovery_store(struct device *dev,
 	if (!recovery)
 		return size;
 
-	BUG_ON(ds_recovery_store_check);
-
 	ds3->is_ds_recovery = ds_power_recovery_count;
-	if (ds3->is_ds_recovery > 0)
-		ds3->is_ds_recovery++;
 	ds_set_state(ds3, STATE_DS_RECOVERY_POWER_OFF);
 
 	return size;

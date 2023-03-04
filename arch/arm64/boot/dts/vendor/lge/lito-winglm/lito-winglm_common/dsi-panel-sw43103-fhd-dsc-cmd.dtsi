@@ -179,9 +179,9 @@
 			39 01 00 00 00 00 02 B0 A3
 			39 01 00 00 00 00 04 EE 02 00 00
 			39 01 00 00 00 00 02 B0 A5
-			39 01 00 00 00 00 0C CD 10 12 01 5A 90 00 00 00 00 00 62//Green Circle
+			39 01 00 00 00 00 0C CD 10 12 01 5A 90 00 00 00 00 00 5D//Green Circle
 			39 01 00 00 00 00 02 B0 A1
-			39 01 00 00 00 00 0B 55 08 08 72 D4 1C 61 0A 90 04 00//FPS On
+			39 01 00 00 00 00 0B 55 08 08 82 8B 1C 61 0A 90 04 00//FPS On
 			39 01 00 00 00 00 03 51 07 FF
 			/*
 			mipi.write 0x39 0xCD 0x00 //FP_SHAPE 0: Rectangle
@@ -379,9 +379,6 @@
 					15 01 00 00 00 00 02 B0 A1 //level1TOP_CTRL
 					15 01 00 00 00 00 02 B0 CA //Manufacturer Command Protect
 					05 01 00 00 78 00 01 11    //Sleep Out
-
-					15 01 00 00 00 00 02 B0 A6
-					39 01 00 00 00 00 05 FC 00 00 41 40		//Touch Vsync_enable
 
 					15 01 00 00 00 00 02 B0 A1 //level1TOP_CTRL
 					15 01 00 00 00 00 02 53 00 //Digital Gamma & Sharpness & BC Dimming & Contrast & CM Mode0 OFF

@@ -187,9 +187,6 @@ void panic(const char *fmt, ...)
 		panic_smp_self_stop();
 
 	console_verbose();
-#ifdef CONFIG_LGE_HANDLE_PANIC
-	resume_console();
-#endif
 	bust_spinlocks(1);
 	va_start(args, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, args);
@@ -653,7 +650,7 @@ device_initcall(register_warn_debugfs);
  */
 __visible void __stack_chk_fail(void)
 {
-	panic("stack-protector: Kernel stack is corrupted in: %pB",
+	panic("stack-protector: Kernel stack is corrupted in: %pB\n",
 		__builtin_return_address(0));
 }
 EXPORT_SYMBOL(__stack_chk_fail);

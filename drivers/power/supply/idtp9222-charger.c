@@ -66,7 +66,7 @@ do {								\
 #ifdef CONFIG_LGE_PM_VENEER_PSY
 #include "lge/veneer-primitives.h"
 #endif
-#ifdef CONFIG_MACH_LITO_CAYMANLM_LAO_COM
+#ifdef CONFIG_LGE_PM
 #include <soc/qcom/lge/board_lge.h>
 #endif
 
@@ -153,7 +153,7 @@ struct idtp9222_struct {
 #endif
 	struct votable*		dc_icl_votable;
 	struct device* 		wlc_device;
-	struct wakeup_source	*wlc_wakelock;
+	struct wakeup_source	wlc_wakelock;
 	/* idtp9222 work struct */
 	struct delayed_work	worker_onpad;
 	struct delayed_work	timer_maxinput;
@@ -688,7 +688,10 @@ static int psy_property_set(struct power_supply* psy,
 	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
 		psy_set_suspend(idtp9222, !!val->intval);
 		break;
-	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX: /* mV */
+		psy_set_voltage_max(idtp9222, val->intval * 1000);
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN: /* uV */
 //	case POWER_SUPPLY_PROP_INPUT_VOLTAGE_REGULATION:
 		psy_set_voltage_max(idtp9222, val->intval);
 		break;
@@ -719,6 +722,14 @@ static int psy_get_power(struct idtp9222_struct* idtp9222) {
 	return power;
 }
 
+static int psy_get_current_max(struct idtp9222_struct* idtp9222) {
+	if (idtp9222_is_onpad(idtp9222))
+		return idtp9222->opmode_midpower
+			? idtp9222->configure_eppcurr : idtp9222->configure_bppcurr;
+	else
+		return 0;
+}
+
 static int psy_get_current_now(struct idtp9222_struct* idtp9222) {
 	u8 value = -1;
 	int result = 0;
@@ -731,6 +742,14 @@ static int psy_get_current_now(struct idtp9222_struct* idtp9222) {
 	}
 
 	return result;
+}
+
+static int psy_get_voltage_max(struct idtp9222_struct* idtp9222) {
+	if (idtp9222_is_onpad(idtp9222))
+		return idtp9222->opmode_midpower
+			? idtp9222->configure_eppvolt : idtp9222->configure_bppvolt;
+	else
+		return 0;
 }
 
 static int psy_get_voltage_now(struct idtp9222_struct* idtp9222) {
@@ -787,12 +806,18 @@ static int psy_property_get(struct power_supply* psy,
 		val->intval = psy_get_power(idtp9222);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		val->intval = get_effective_result(idtp9222->dc_icl_votable);
+		val->intval = psy_get_current_max(idtp9222);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		val->intval = psy_get_current_now(idtp9222);
 		break;
+	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
+		val->intval = get_effective_result(idtp9222->dc_icl_votable);
+		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		val->intval = psy_get_voltage_max(idtp9222);
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
 		val->intval = get_effective_result(idtp9222->wlc_voltage);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
@@ -833,6 +858,7 @@ static int psy_property_writeable(struct power_supply* psy,
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		rc = 1;
 		break;
 	default:
@@ -1359,10 +1385,10 @@ static irqreturn_t idtp9222_isr_detached(int irq, void* data) {
 
 	if (detached) {
 		psy_set_onpad(idtp9222, false);
-		idtp9222_wakelock_release(idtp9222->wlc_wakelock);
+		idtp9222_wakelock_release(&idtp9222->wlc_wakelock);
 	}
 	else {
-		idtp9222_wakelock_acquire(idtp9222->wlc_wakelock);
+		idtp9222_wakelock_acquire(&idtp9222->wlc_wakelock);
 
 		idtp9222_set_dualdisplay(idtp9222);
 		wa_clear_dc_reverse_volt_trigger(true);
@@ -1445,7 +1471,7 @@ static bool idtp9222_probe_devicetree(struct device_node* dnode,
 		of_find_node_by_name(NULL, "qcom,qpnp-smb5");
 	const char* arr = NULL;
 	int i, buf = -1;
-#ifdef CONFIG_MACH_LITO_CAYMANLM_LAO_COM
+#ifdef CONFIG_LGE_PM
 	if(HW_SKU_NA_CDMA_VZW == lge_get_sku_carrier())
 		battery_supp = of_find_node_by_name(NULL, "lge-vzw-battery-supplement");
 	else
@@ -1693,8 +1719,6 @@ static int idtp9222_remove(struct i2c_client* client) {
 	pr_idt(IDT_VERBOSE, "idt9222 is about to be removed from system\n");
 
 	if (idtp9222) {
-		wakeup_source_unregister(idtp9222->wlc_wakelock);
-
 	/* Clear descripters */
 		if (delayed_work_pending(&idtp9222->worker_onpad))
 			cancel_delayed_work_sync(&idtp9222->worker_onpad);
@@ -1746,7 +1770,6 @@ static int idtp9222_probe(struct i2c_client* client, const struct i2c_device_id*
 	idtp9222->wlc_client = client;
 	idtp9222->wlc_device = &client->dev;
 	idtp9222->wlc_device->platform_data = idtp9222;
-	idtp9222->wlc_wakelock = wakeup_source_register(idtp9222->wlc_device, "IDTP9222: wakelock");
 
 	// For remained preset
 	if (!idtp9222_probe_devicetree(idtp9222->wlc_device->of_node, idtp9222)) {
@@ -1763,7 +1786,6 @@ static int idtp9222_probe(struct i2c_client* client, const struct i2c_device_id*
 		pr_idt(IDT_ERROR, "Unable to register wlc_psy\n");
 		goto error;
 	}
-
 	// Request irqs
 	if (!idtp9222_probe_irqs(idtp9222)) {
 		pr_idt(IDT_ERROR, "Fail to request irqs at probe\n");
@@ -1780,6 +1802,8 @@ static int idtp9222_probe(struct i2c_client* client, const struct i2c_device_id*
 		pr_idt(IDT_ERROR, "unable to create/get votables\n");
 		goto error;
 	}
+
+	wakeup_source_init(&idtp9222->wlc_wakelock, "IDTP9222: wakelock");
 
 	// For work structs
 	INIT_DELAYED_WORK(&idtp9222->worker_onpad, idtp9222_worker_onpad);

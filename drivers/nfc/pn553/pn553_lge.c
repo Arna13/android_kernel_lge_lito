@@ -61,7 +61,7 @@ static bool sPowerState = NFC_POWER_OFF;
 
 static struct i2c_client *pn547_client;
 
-static struct wakeup_source *nfc_wake_lock;
+static struct wakeup_source nfc_wake_lock;
 
 #ifdef CONFIG_LGE_NFC_USE_PMIC
 static void pn547_change_clk(struct pn547_dev *pn547_dev, unsigned int clk_state)
@@ -180,7 +180,7 @@ static irqreturn_t pn547_dev_irq_handler(int irq, void *dev_id)
         /* Wake up waiting readers */
         wake_up(&pn547_dev->read_wq);
         if (sIsWakeLocked == false) {
-            __pm_stay_awake(nfc_wake_lock);
+            __pm_stay_awake(&nfc_wake_lock);
             sIsWakeLocked = true;
         }
         else {
@@ -231,7 +231,7 @@ static ssize_t pn547_dev_read(struct file *filp, char __user *buf,
             pr_err("%s: no more interrupt after %dms (%d)!\n", __func__, NFC_TIMEOUT_MS, gpio_get_value(pn547_dev->irq_gpio)); // for debug
             spin_lock_irqsave(&pn547_dev->irq_enabled_lock, flags);
             if (sIsWakeLocked == true) {
-                __pm_relax(nfc_wake_lock);
+                __pm_relax(&nfc_wake_lock);
                 sIsWakeLocked = false;
             }
             spin_unlock_irqrestore(&pn547_dev->irq_enabled_lock, flags);
@@ -431,7 +431,7 @@ static long pn547_dev_unlocked_ioctl(struct file *filp, unsigned int cmd, unsign
 #endif
                 if (sIsWakeLocked == true) {
                     pr_err("%s: Release Wake_Lock\n", __func__);
-                    __pm_relax(nfc_wake_lock);
+                    __pm_relax(&nfc_wake_lock);
                     sIsWakeLocked = false;
                 }
                 //pr_err("%s NFC_POWER_OFF\n", __func__); // for debug
@@ -554,12 +554,7 @@ static int pn547_probe(struct i2c_client *client,
         goto err_misc_register;
     }
 
-    //wakeup_source_init(&nfc_wake_lock, "NFCWAKE"); //change wakeup_source_init() -> wakeup_source_register() by SM8350
-    nfc_wake_lock = wakeup_source_register(pn547_dev->pn547_device.this_device, "NFCWAKE");
-    if (!nfc_wake_lock) {
-        pr_err("%s : wakeup_source_register failed\n", __FILE__);
-        goto err_misc_register;
-    }
+    wakeup_source_init(&nfc_wake_lock, "NFCWAKE");
 
     /* request irq.  the irq is set whenever the chip has data available
      * for reading.  it is cleared when all data has been read.

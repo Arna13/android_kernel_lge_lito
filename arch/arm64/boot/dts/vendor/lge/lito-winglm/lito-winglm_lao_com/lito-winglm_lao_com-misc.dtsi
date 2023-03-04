@@ -5,4 +5,7 @@
 
 #include "../lito-winglm_common/lito-winglm_common-misc.dtsi"
 
-
+&qupv3_se9_i2c {
+	/* Override sleep state of pins */
+	pinctrl-1 = <&qupv3_se9_i2c_active>;
+};

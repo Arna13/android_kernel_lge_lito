@@ -117,17 +117,6 @@ config INPUT_E3X0_BUTTON
 	  To compile this driver as a module, choose M here: the
 	  module will be called e3x0_button.
 
-config INPUT_HBTP_INPUT
-	tristate "HBTP input driver support"
-	help
-	  This option enables an input driver for the host based touch
-	  processing.
-
-	  Say Y to enable HBTP input driver.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called hbtp_input.
-
 config INPUT_PCSPKR
 	tristate "PC Speaker support"
 	depends on PCSPKR_PLATFORM
@@ -902,24 +891,4 @@ config SAR_ALMF04_C2_C3_12QFN
        help
          Support ATMF04_12QFN as an input device.
 
-config SAR_ALMF04QFN_2_3CH_NIT
-       bool "SAR_ALMF04QFN_2_3CH_NIT support"
-       depends on I2C
-       help
-         Support ATMF04_12QFN as an input device.
-
-config SAR_2nd_ALMF04QFN_2_3CH_NIT
-       bool "SAR_2nd_ALMF04QFN_2_3CH_NIT support"
-       depends on I2C
-       help
-         Support ATMF04_12QFN as an input device.
-
-config LGE_SAR_CONTROLLER_USB_DETECT
-        bool "LGE_SAR_CONTROLLER_USB_DETECT support"
-        depends on SAR_ALMF04QFN_2_3CH_NIT
-        help
-           Support LGE_SAR_CONTROLLER_USB_DETECT feature
-
 endif
-
-source "drivers/input/misc/tcs3407/Kconfig"

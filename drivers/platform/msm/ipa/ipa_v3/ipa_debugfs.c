@@ -322,21 +322,40 @@ static ssize_t ipa3_write_keep_awake(struct file *file, const char __user *buf,
 {
 	s8 option = 0;
 	int ret;
+	uint32_t bw_mbps = 0;
 
 	ret = kstrtos8_from_user(buf, count, 0, &option);
 	if (ret)
 		return ret;
 
-	if (option == 0) {
-		if (ipa_pm_remove_dummy_clients()) {
-			pr_err("Failed to remove dummy clients\n");
-			return -EFAULT;
-		}
-	} else {
-		if (ipa_pm_add_dummy_clients(option - 1)) {
-			pr_err("Failed to add dummy clients\n");
-			return -EFAULT;
-		}
+	switch (option) {
+	case 0:
+		IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
+		bw_mbps = 0;
+		break;
+	case 1:
+		IPA_ACTIVE_CLIENTS_INC_SIMPLE();
+		bw_mbps = 0;
+		break;
+	case 2:
+		IPA_ACTIVE_CLIENTS_INC_SIMPLE();
+		bw_mbps = 700;
+		break;
+	case 3:
+		IPA_ACTIVE_CLIENTS_INC_SIMPLE();
+		bw_mbps = 3000;
+		break;
+	case 4:
+		IPA_ACTIVE_CLIENTS_INC_SIMPLE();
+		bw_mbps = 7000;
+		break;
+	default:
+		pr_err("Not support this vote (%d)\n", option);
+		return -EFAULT;
+	}
+	if (ipa3_vote_for_bus_bw(&bw_mbps)) {
+		IPAERR("Failed to vote for bus BW (%u)\n", bw_mbps);
+		return -EFAULT;
 	}
 
 	return count;
@@ -357,129 +376,6 @@ static ssize_t ipa3_read_keep_awake(struct file *file, char __user *ubuf,
 	mutex_unlock(&ipa3_ctx->ipa3_active_clients.mutex);
 
 	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, nbytes);
-}
-
-static ssize_t ipa3_read_mpm_ring_size_dl(struct file *file, char __user *ubuf,
-	size_t count, loff_t *ppos)
-{
-	int nbytes;
-
-	nbytes = scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
-			"IPA_MPM_RING_SIZE_DL = %d\n",
-			ipa3_ctx->mpm_ring_size_dl);
-
-	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, nbytes);
-}
-
-static ssize_t ipa3_read_mpm_ring_size_ul(struct file *file, char __user *ubuf,
-	size_t count, loff_t *ppos)
-{
-	int nbytes;
-
-	nbytes = scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
-			"IPA_MPM_RING_SIZE_UL = %d\n",
-			ipa3_ctx->mpm_ring_size_ul);
-
-	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, nbytes);
-}
-
-static ssize_t ipa3_read_mpm_uc_thresh(struct file *file, char __user *ubuf,
-	size_t count, loff_t *ppos)
-{
-	int nbytes;
-
-	nbytes = scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
-			"IPA_MPM_UC_THRESH = %d\n", ipa3_ctx->mpm_uc_thresh);
-
-	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, nbytes);
-}
-
-static ssize_t ipa3_read_mpm_teth_aggr_size(struct file *file,
-	char __user *ubuf, size_t count, loff_t *ppos)
-{
-	int nbytes;
-
-	nbytes = scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
-			"IPA_MPM_TETH_AGGR_SIZE = %d\n",
-			ipa3_ctx->mpm_teth_aggr_size);
-
-	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, nbytes);
-}
-
-static ssize_t ipa3_write_mpm_ring_size_dl(struct file *file,
-	const char __user *buf,
-	size_t count, loff_t *ppos)
-{
-	s8 option = 0;
-	int ret;
-
-	ret = kstrtos8_from_user(buf, count, 0, &option);
-	if (ret)
-		return ret;
-	/* as option is type s8, max it can take is 127 */
-	if ((option > 0) && (option <= IPA_MPM_MAX_RING_LEN))
-		ipa3_ctx->mpm_ring_size_dl = option;
-	else
-		IPAERR("Invalid dl ring size =%d: range is 1 to %d\n",
-			option, IPA_MPM_MAX_RING_LEN);
-	return count;
-}
-
-static ssize_t ipa3_write_mpm_ring_size_ul(struct file *file,
-	const char __user *buf,
-	size_t count, loff_t *ppos)
-{
-	s8 option = 0;
-	int ret;
-
-	ret = kstrtos8_from_user(buf, count, 0, &option);
-	if (ret)
-		return ret;
-	/* as option type is s8, max it can take is 127 */
-	if ((option > 0) && (option <= IPA_MPM_MAX_RING_LEN))
-		ipa3_ctx->mpm_ring_size_ul = option;
-	else
-		IPAERR("Invalid ul ring size =%d: range is only 1 to %d\n",
-			option, IPA_MPM_MAX_RING_LEN);
-	return count;
-}
-
-static ssize_t ipa3_write_mpm_uc_thresh(struct file *file,
-	const char __user *buf,
-	size_t count, loff_t *ppos)
-{
-	s8 option = 0;
-	int ret;
-
-	ret = kstrtos8_from_user(buf, count, 0, &option);
-	if (ret)
-		return ret;
-	/* as option type is s8, max it can take is 127 */
-	if ((option > 0) && (option <= IPA_MPM_MAX_UC_THRESH))
-		ipa3_ctx->mpm_uc_thresh = option;
-	else
-		IPAERR("Invalid ul ring size =%d: range is only 1 to %d\n",
-			option, IPA_MPM_MAX_UC_THRESH);
-	return count;
-}
-
-static ssize_t ipa3_write_mpm_teth_aggr_size(struct file *file,
-	const char __user *buf,
-	size_t count, loff_t *ppos)
-{
-	s8 option = 0;
-	int ret;
-
-	ret = kstrtos8_from_user(buf, count, 0, &option);
-	if (ret)
-		return ret;
-	/* as option type is s8, max it can take is 127 */
-	if ((option > 0) && (option <= IPA_MAX_TETH_AGGR_BYTE_LIMIT))
-		ipa3_ctx->mpm_teth_aggr_size = option;
-	else
-		IPAERR("Invalid ul ring size =%d: range is only 1 to %d\n",
-			option, IPA_MAX_TETH_AGGR_BYTE_LIMIT);
-	return count;
 }
 
 static ssize_t ipa3_read_hdr(struct file *file, char __user *ubuf, size_t count,
@@ -1483,9 +1379,9 @@ static ssize_t ipa3_read_ntn(struct file *file, char __user *ubuf,
 		size_t count, loff_t *ppos)
 {
 #define TX_STATS(y) \
-	stats.tx_ch_stats[0].y
+	ipa3_ctx->uc_ntn_ctx.ntn_uc_stats_mmio->tx_ch_stats[0].y
 #define RX_STATS(y) \
-	stats.rx_ch_stats[0].y
+	ipa3_ctx->uc_ntn_ctx.ntn_uc_stats_mmio->rx_ch_stats[0].y
 
 	struct Ipa3HwStatsNTNInfoData_t stats;
 	int nbytes;
@@ -2675,26 +2571,6 @@ static const struct ipa3_debugfs_file debugfs_files[] = {
 			.write = ipa3_write_keep_awake,
 		}
 	}, {
-		"mpm_ring_size_dl", IPA_READ_WRITE_MODE, NULL, {
-			.read = ipa3_read_mpm_ring_size_dl,
-			.write = ipa3_write_mpm_ring_size_dl,
-		}
-	}, {
-		"mpm_ring_size_ul", IPA_READ_WRITE_MODE, NULL, {
-			.read = ipa3_read_mpm_ring_size_ul,
-			.write = ipa3_write_mpm_ring_size_ul,
-		}
-	}, {
-		"mpm_uc_thresh", IPA_READ_WRITE_MODE, NULL, {
-			.read = ipa3_read_mpm_uc_thresh,
-			.write = ipa3_write_mpm_uc_thresh,
-		}
-	}, {
-		"mpm_teth_aggr_size", IPA_READ_WRITE_MODE, NULL, {
-			.read = ipa3_read_mpm_teth_aggr_size,
-			.write = ipa3_write_mpm_teth_aggr_size,
-		}
-	}, {
 		"holb", IPA_WRITE_ONLY_MODE, NULL, {
 			.write = ipa3_write_ep_holb,
 		}
@@ -2944,15 +2820,6 @@ struct dentry *ipa_debugfs_get_root(void)
 EXPORT_SYMBOL(ipa_debugfs_get_root);
 
 #else /* !CONFIG_DEBUG_FS */
-#define INVALID_NO_OF_CHAR (-1)
 void ipa3_debugfs_init(void) {}
 void ipa3_debugfs_remove(void) {}
-int _ipa_read_ep_reg_v3_0(char *buf, int max_len, int pipe)
-{
-	return INVALID_NO_OF_CHAR;
-}
-int _ipa_read_ep_reg_v4_0(char *buf, int max_len, int pipe)
-{
-	return INVALID_NO_OF_CHAR;
-}
 #endif

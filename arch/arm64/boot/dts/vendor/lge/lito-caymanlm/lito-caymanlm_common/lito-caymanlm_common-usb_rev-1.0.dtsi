@@ -88,7 +88,7 @@
         io-channels = <&pm7250b_vadc ADC_AMUX_THM4_PU2>;
         io-channel-names = "amux_thm4";
         lge,acc-high-thr = <970000>;
-        lge,acc-low-thr = <580000>;
+        lge,acc-low-thr = <620000>;
         lge,acc_det_vadc;
 
         pinctrl-names = "default";

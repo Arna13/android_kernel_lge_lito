@@ -45,19 +45,12 @@
 #define RAM_CONSOLE_ADDR_ADDR     0x58
 #define RAM_CONSOLE_SIZE_ADDR     0x5C
 #define FB_ADDR_ADDR              0x60
-#ifdef CONFIG_MACH_LITO_WINGLM
-#define DISPLAY_LDO_ENABLED       0x6C
-#endif
 
 #define RESTART_REASON      (msm_imem_base + RESTART_REASON_ADDR)
 #define CRASH_HANDLER_MAGIC (msm_imem_base + CRASH_HANDLER_MAGIC_ADDR)
 #define RAM_CONSOLE_ADDR    (msm_imem_base + RAM_CONSOLE_ADDR_ADDR)
 #define RAM_CONSOLE_SIZE    (msm_imem_base + RAM_CONSOLE_SIZE_ADDR)
 #define FB_ADDR             (msm_imem_base + FB_ADDR_ADDR)
-#ifdef CONFIG_MACH_LITO_WINGLM
-#define DISPLAY_LDO_ENABLED_ADDR (msm_imem_base + DISPLAY_LDO_ENABLED)
-#endif
-
 static void *msm_imem_base;
 static int dummy_arg;
 static int subsys_crash_magic;
@@ -98,13 +91,6 @@ static void lge_get_mmu_sys_ctrl_register(void)
 	printk("far_el1: %016llx  contextidr_el1: %016llx tpidr_el0: %016llx tpidr_el1: %016llx tpidrro_el0: %016llx \n",
 						far_el1, contextidr_el1, tpidr_el0, tpidr_el1, tpidrro_el0);
 }
-
-#ifdef CONFIG_MACH_LITO_WINGLM
-void lge_set_display_ldo_enabled(unsigned int val)
-{
-	writeb_relaxed(val, DISPLAY_LDO_ENABLED_ADDR);
-}
-#endif
 
 #ifdef CONFIG_LGE_HANDLE_PANIC_RPMH_TIMEOUT
 static int rphm_timeout_panic = 0;

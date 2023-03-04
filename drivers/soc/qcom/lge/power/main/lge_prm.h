@@ -26,14 +26,12 @@ enum {
 	LGE_PRM_INIT_FBCN   = 4,
 	LGE_PRM_INIT_TRITON = 8,
 	LGE_PRM_INIT_DD     = 16,
-	LGE_PRM_INIT_SWIVEL = 32,
 	LGE_PRM_INIT_MAX  =
 		LGE_PRM_INIT_VFPS|
 		LGE_PRM_INIT_SBEN|
 		LGE_PRM_INIT_FBCN|
 		LGE_PRM_INIT_TRITON|
-		LGE_PRM_INIT_DD|
-		LGE_PRM_INIT_SWIVEL,
+		LGE_PRM_INIT_DD,
 };
 
 enum {
@@ -47,8 +45,6 @@ enum {
 	LGE_PRM_INFO_CONNECTION_DS2_STATE = 7,
 	LGE_PRM_INFO_HALLIC_STATE         = 8,
 	LGE_PRM_INFO_DS_STATE             = 9,
-	LGE_PRM_INFO_SWIVEL_STATE         = 10,
-	LGE_PRM_INFO_SWIVEL_ENABLED       = 11,
 	LGE_PRM_INFO_MAX,
 };
 
@@ -58,7 +54,6 @@ typedef enum display_event {
 	LGE_PRM_DISPLAY_EVENT_DD2_STATE    = 2,
 	LGE_PRM_DISPLAY_EVENT_HALLIC_STATE = 3,
 	LGE_PRM_DISPLAY_EVENT_DS_STATE     = 4,
-	LGE_PRM_DISPLAY_EVENT_SWIVEL_STATE = 5,
 	LGE_PRM_DISPLAY_EVENT_MAX,
 } display_event_t;
 
@@ -88,13 +83,6 @@ enum {
 	LGE_PRM_DS_STATE_MAX,
 };
 
-enum {
-	LGE_PRM_SWIVEL_HALF_OPENED   = 0,
-	LGE_PRM_SWIVEL_CLOSE         = 1,
-	LGE_PRM_SWIVEL_OPEN          = 2,
-	LGE_PRM_SWIVEL_MAX,
-};
-
 struct lge_prm {
 	bool init_done_flag;
 	struct class  *cnode;
@@ -107,7 +95,6 @@ struct lge_prm {
 	int           ds2_connect_mode;
 	int           hallic_mode;
 	int           ds_state;
-	int           swivel_state;
 };
 
 #ifdef CONFIG_LGE_PM_PRM

@@ -11,8 +11,8 @@
 };
 
 &smb1390 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&smb_stat_default>;
+	/delete-property/ interrupts;
+	interrupts = <0x2 0xc5 0x0 IRQ_TYPE_LEVEL_HIGH>;
 	status = "ok";
 };
 
@@ -81,8 +81,6 @@
     pinctrl-0 = <
         &bmr_w_therm_default
         &bmr_s_therm_default
-        &amux_thm4_default
-        &amux_thm4_pu2_default
     >;
 
     usb_in_i_uv@7 {
@@ -95,22 +93,6 @@
         reg = <ADC_USB_IN_V_16>;
         label = "usb_in_v_div_16";
         qcom,pre-scaling = <1 16>;
-    };
-
-    amux_thm4 {
-        reg = <ADC_AMUX_THM4>;
-        label = "amux_thm4";
-        qcom,ratiometric;
-        qcom,hw-settle-time = <200>;
-        qcom,pre-scaling = <1 1>;
-    };
-
-    amux_thm4_pu2 {
-        reg = <ADC_AMUX_THM4_PU2>;
-        label = "amux_thm4_pu2";
-        qcom,ratiometric;
-        qcom,hw-settle-time = <200>;
-        qcom,pre-scaling = <1 1>;
     };
 
 	/* quiet_therm */
@@ -133,18 +115,6 @@
 };
 
 &pm7250b_gpios {
-    amux_thm4 {
-        amux_thm4_default: amux_thm4_default {
-            pins = "gpio1";
-            bias-high-impedance;
-        };
-    };
-    amux_thm4_pu2 {
-        amux_thm4_pu2_default: amux_thm4_pu2_default {
-            pins = "gpio1";
-            bias-high-impedance;
-        };
-    };
     bmr_s_therm {
         bmr_s_therm_default: bmr_s_therm_default {
             pins = "gpio5";
@@ -156,26 +126,6 @@
 			pins = "gpio8";
 			input-enable;
 			bias-pull-down;
-		};
-    };
-	smb_stat {
-		smb_stat_default: smb_stat_default {
-		  pins = "gpio6";
-		  function = "normal";
-		  input-enable;
-		  bias-pull-up;
-		  qcom,pull-up-strength = <PMIC_GPIO_PULL_UP_30>;
-		  power-source = <0>;
-		};
-	};
-	smb_stat {
-		smb_stat_default: smb_stat_default {
-		  pins = "gpio6";
-		  function = "normal";
-		  input-enable;
-		  bias-pull-up;
-		  qcom,pull-up-strength = <PMIC_GPIO_PULL_UP_30>;
-		  power-source = <0>;
 		};
 	};
 };
@@ -205,7 +155,8 @@
 &pm7250b_adc_tm {
 	io-channels = <&pm7250b_vadc ADC_AMUX_THM1_PU2>,
 			<&pm7250b_vadc ADC_GPIO2_PU2>,
-			<&pm7250b_vadc ADC_GPIO3_PU2>;
+			<&pm7250b_vadc ADC_GPIO3_PU2>,
+			<&pm7250b_vadc ADC_GPIO4_PU2>;
 
 	/* quiet_therm */
 	charger_skin_therm@4d {
@@ -220,9 +171,6 @@
 		qcom,ratiometric;
 		qcom,hw-settle-time = <200>;
 	};
-
-	/* Unused io-channel "&pm7250b_vadc ADC_GPIO4_PU2" and and their child node "camera_flash_therm" should be removed in main dtsi,
-	   because maximum four ADC_TM channels can be added. */
 };
 
 &thermal_zones {
@@ -322,10 +270,6 @@
 	mmw-pa4-usr {
 		status = "disabled";
 	};
-
-	camera-therm-usr {
-		status = "disabled";
-	};
 };
 
 &pm7250b_charger {
@@ -344,8 +288,7 @@
               <&pm7250b_vadc ADC_AMUX_THM3_PU2>,
               <&pm7250b_vadc ADC_SBUx>,
               <&pm7250b_vadc ADC_VPH_PWR>,
-              <&pm8150l_vadc ADC_AMUX_THM2_PU3>,
-	          <&pm7250b_vadc ADC_AMUX_THM4_PU2>;
+              <&pm8150l_vadc ADC_AMUX_THM2_PU3>;
     io-channel-names = "mid_voltage",
                "usb_in_voltage",
                "usb_in_current",
@@ -354,8 +297,7 @@
                "conn_temp",
                "sbux_res",
                "vph_voltage",
-               "usb_id",
-	           "low_pcb_adc";
+               "usb_id";
     qcom,battery-data = <&lge_batterydata>;
     qcom,step-charging-enable;
     /delete-property/ qcom,sw-jeita-enable;
@@ -371,7 +313,6 @@
     lge,prot-overchg-ent-dischg-off-uv = <10000>;
     lge,prot-overchg-ent-chg-off-uv = <20000>;
     lge,prot-overchg-rel-off-uv = <50000>;
-    lge,hvdcp-disable-user;
 
     lge-extension-usb {
         lge,usbid-adc-range = <10>;		// ADC margin (pct unit)

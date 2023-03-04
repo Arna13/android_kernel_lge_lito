@@ -19,7 +19,6 @@
 #include <media/cam_defs.h>
 #include <media/cam_icp.h>
 #include <media/cam_cpas.h>
-#include <media/cam_req_mgr.h>
 
 #include "cam_sync_api.h"
 #include "cam_packet_util.h"
@@ -45,7 +44,6 @@
 #include "cam_trace.h"
 #include "cam_cpas_api.h"
 #include "cam_common_util.h"
-#include "cam_req_mgr_dev.h"
 
 #define ICP_WORKQ_TASK_CMD_TYPE 1
 #define ICP_WORKQ_TASK_MSG_TYPE 2
@@ -1741,7 +1739,6 @@ static int cam_icp_mgr_ipe_bps_power_collapse(struct cam_icp_hw_mgr *hw_mgr,
 			bps_dev_intf->hw_ops.deinit
 				(bps_dev_intf->hw_priv, NULL, 0);
 			hw_mgr->bps_clk_state = false;
-			hw_mgr->clk_info[ICP_CLK_HW_BPS].curr_clk = 0;
 		}
 	} else {
 		CAM_DBG(CAM_PERF, "ipe ctx cnt %d", hw_mgr->ipe_ctxt_cnt);
@@ -1777,7 +1774,6 @@ static int cam_icp_mgr_ipe_bps_power_collapse(struct cam_icp_hw_mgr *hw_mgr,
 		}
 
 		hw_mgr->ipe_clk_state = false;
-		hw_mgr->clk_info[ICP_CLK_HW_IPE].curr_clk = 0;
 	}
 
 end:
@@ -2491,9 +2487,7 @@ static int cam_icp_mgr_process_fatal_error(
 	struct cam_icp_hw_mgr *hw_mgr, uint32_t *msg_ptr)
 {
 	struct hfi_msg_event_notify *event_notify;
-	int rc = 0, i = 0;
-	struct cam_req_mgr_message req_msg;
-	struct cam_acquire_dev_cmd *acq_cmd;
+	int rc = 0;
 
 	CAM_DBG(CAM_ICP, "Enter");
 
@@ -2513,31 +2507,6 @@ static int cam_icp_mgr_process_fatal_error(
 		if (event_notify->event_data1 == HFI_ERR_SYS_FATAL) {
 			CAM_ERR(CAM_ICP, "received HFI_ERR_SYS_FATAL");
 			BUG();
-		} else if (event_notify->event_data1 ==
-			HFI_ERR_SYS_RESET_FAILURE) {
-			for (i = 0; i < CAM_ICP_CTX_MAX; i++) {
-				if (hw_mgr->ctx_data[i].state !=
-					CAM_CTX_ACQUIRED)
-					continue;
-
-				acq_cmd = &hw_mgr->ctx_data[i].acquire_dev_cmd;
-				CAM_INFO(CAM_ICP,
-					"Sending Full Recovery on sess %x",
-					acq_cmd->session_handle);
-
-				req_msg.session_hdl =
-					acq_cmd->session_handle;
-				req_msg.u.err_msg.device_hdl = -1;
-				req_msg.u.err_msg.link_hdl = -1;
-				req_msg.u.err_msg.request_id = 0;
-				req_msg.u.err_msg.resource_size = 0x0;
-				req_msg.u.err_msg.error_type =
-					CAM_REQ_MGR_ERROR_TYPE_FULL_RECOVERY;
-				cam_req_mgr_notify_message(&req_msg,
-					V4L_EVENT_CAM_REQ_MGR_ERROR,
-					V4L_EVENT_CAM_REQ_MGR_EVENT);
-				break;
-			}
 		}
 		rc = cam_icp_mgr_trigger_recovery(hw_mgr);
 		cam_icp_mgr_process_dbg_buf(icp_hw_mgr.a5_dbg_lvl);
@@ -5225,7 +5194,7 @@ static int cam_icp_mgr_hw_dump(void *hw_priv, void *hw_dump_args)
 	return 0;
 hw_dump:
 	cur_time = ktime_get();
-	diff = ktime_us_delta(cur_time, frm_process->submit_timestamp[i]);
+	diff = ktime_us_delta(frm_process->submit_timestamp[i], cur_time);
 	cur_ts = ktime_to_timespec64(cur_time);
 	req_ts = ktime_to_timespec64(frm_process->submit_timestamp[i]);
 
@@ -5632,7 +5601,6 @@ static int cam_icp_mgr_acquire_hw(void *hw_mgr_priv, void *acquire_hw_args)
 	}
 	ctx_data = &hw_mgr->ctx_data[ctx_id];
 	ctx_data->ctx_id = ctx_id;
-	ctx_data->acquire_dev_cmd.session_handle = args->session_hdl;
 
 	mutex_lock(&ctx_data->ctx_mutex);
 	rc = cam_icp_get_acquire_info(hw_mgr, args, ctx_data);
@@ -5974,45 +5942,28 @@ compat_hw_name_failed:
 	return rc;
 }
 
-static void cam_req_mgr_process_workq_icp_command_queue(struct work_struct *w)
-{
-	cam_req_mgr_process_workq(w);
-}
-
-static void cam_req_mgr_process_workq_icp_message_queue(struct work_struct *w)
-{
-	cam_req_mgr_process_workq(w);
-}
-
-static void cam_req_mgr_process_workq_icp_timer_queue(struct work_struct *w)
-{
-	cam_req_mgr_process_workq(w);
-}
-
 static int cam_icp_mgr_create_wq(void)
 {
 	int rc;
 	int i;
 
 	rc = cam_req_mgr_workq_create("icp_command_queue", ICP_WORKQ_NUM_TASK,
-		&icp_hw_mgr.cmd_work, CRM_WORKQ_USAGE_NON_IRQ, 0,
-		cam_req_mgr_process_workq_icp_command_queue);
+		&icp_hw_mgr.cmd_work, CRM_WORKQ_USAGE_NON_IRQ,
+		0);
 	if (rc) {
 		CAM_ERR(CAM_ICP, "unable to create a command worker");
 		goto cmd_work_failed;
 	}
 
 	rc = cam_req_mgr_workq_create("icp_message_queue", ICP_WORKQ_NUM_TASK,
-		&icp_hw_mgr.msg_work, CRM_WORKQ_USAGE_IRQ, 0,
-		cam_req_mgr_process_workq_icp_message_queue);
+		&icp_hw_mgr.msg_work, CRM_WORKQ_USAGE_IRQ, 0);
 	if (rc) {
 		CAM_ERR(CAM_ICP, "unable to create a message worker");
 		goto msg_work_failed;
 	}
 
 	rc = cam_req_mgr_workq_create("icp_timer_queue", ICP_WORKQ_NUM_TASK,
-		&icp_hw_mgr.timer_work, CRM_WORKQ_USAGE_IRQ, 0,
-		cam_req_mgr_process_workq_icp_timer_queue);
+		&icp_hw_mgr.timer_work, CRM_WORKQ_USAGE_IRQ, 0);
 	if (rc) {
 		CAM_ERR(CAM_ICP, "unable to create a timer worker");
 		goto timer_work_failed;

@@ -40,14 +40,6 @@
         compatible = "bootlog";
     };
 
-    mcd {
-        compatible = "qcom,mcd";
-        qcom,ce-hw-instance = <0>;
-        qcom,ce-device = <0>;
-        interrupts = <0 472 IRQ_TYPE_EDGE_RISING>;
-        interrupt-names = "mcd_irq";
-    };
-
     wdog: qcom,wdt@17c10000 {
         qcom,bark-time = <16000>;
     };
@@ -56,8 +48,4 @@
 
 &cont_splash_memory {
     reg = <0x0 0xA0000000 0x0 0x01200000>;
-};
-
-&disp_rdump_memory {
-    reg = <0x0 0xA0000000 0x0 0x1200000>;
 };

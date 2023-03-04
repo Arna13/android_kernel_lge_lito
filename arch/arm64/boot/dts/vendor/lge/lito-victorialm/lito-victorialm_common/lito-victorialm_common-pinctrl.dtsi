@@ -4,8 +4,6 @@
  */
 
 &tlmm {
-	lge,access-denied-gpios = <59 60 61 62>;
-
 	pmx_ts_reset {
 		ts_reset_active: ts_reset_active {
 			mux {

@@ -658,12 +658,6 @@ static void msm_restart_prepare(const char *cmd)
 			if (!ret)
 				__raw_writel(0x6f656d00 | (code & 0xff),
 					     restart_reason);
-
-#ifdef CONFIG_LGE_PM
-			if (!ret && code == 0x11)
-				qpnp_pon_set_restart_reason(
-					PON_RESTART_REASON_SHIP_MODE);
-#endif
 #ifndef CONFIG_LGE_HANDLE_PANIC
 		} else if (!strncmp(cmd, "edl", 3)) {
 			enable_emergency_dload_mode();
@@ -826,14 +820,11 @@ static void do_msm_poweroff(void)
 }
 
 #ifdef CONFIG_LGE_HANDLE_PANIC
-extern int skip_free_rdump;
 static int __init lge_crash_handler(char *status)
 {
         if (!strcmp(status, "on"))
         {
                 download_mode = 1;
-
-		skip_free_rdump = 1;
         }
         return 1;
 }
@@ -909,9 +900,9 @@ static void do_msm_restart_timeout(enum reboot_mode reboot_mode, const char *cmd
 	u64 timeout_ms;
 
 	if (lge_get_download_mode() == true) {
-		timeout_ms = 120*1000; // forbid false positive & for debugging
+		timeout_ms = 60*1000; // forbid false positive & for debugging
 	} else {
-		timeout_ms = 60*1000; // smooth action for customer
+		timeout_ms = 15*1000; // smooth action for customer
 	}
 
 	if (lge_reboot_timeout.poweroff_timer.function == NULL) {

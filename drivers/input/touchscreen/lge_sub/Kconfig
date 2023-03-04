@@ -9,9 +9,5 @@ config LGE_TOUCH_SUB_PEN
 	help
 	test code for pen
 
-config LGE_TOUCH_SUB_DEX
-	bool "LGE Touch SUB DEX"
-	help
-	code for DEX
 source "drivers/input/touchscreen/lge_sub/lgsic/Kconfig"
 endif

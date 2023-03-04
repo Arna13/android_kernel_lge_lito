@@ -244,11 +244,6 @@ int ecryptfs_initialize_file(struct dentry *ecryptfs_dentry,
 		goto out;
 	}
 
-	if (ecryptfs_should_exclude_encrypt(ecryptfs_dentry)) {
-		crypt_stat->flags &= ~(ECRYPTFS_ENCRYPTED);
-		goto out;
-        }
-
 	if (mount_sd_crypt_stat && (mount_sd_crypt_stat->flags
 			& ECRYPTFS_DECRYPTION_ONLY)) {
 		crypt_stat->flags &= ~(ECRYPTFS_ENCRYPTED);
@@ -354,9 +349,9 @@ static int ecryptfs_i_size_read(struct dentry *dentry, struct inode *inode)
 static struct dentry *ecryptfs_lookup_interpose(struct dentry *dentry,
 				     struct dentry *lower_dentry)
 {
-	struct path *path = ecryptfs_dentry_to_lower_path(dentry->d_parent);
-	struct inode *inode, *lower_inode;
+	struct inode *inode, *lower_inode = d_inode(lower_dentry);
 	struct ecryptfs_dentry_info *dentry_info;
+	struct vfsmount *lower_mnt;
 	int rc = 0;
 
 	dentry_info = kmem_cache_alloc(ecryptfs_dentry_info_cache, GFP_KERNEL);
@@ -365,23 +360,16 @@ static struct dentry *ecryptfs_lookup_interpose(struct dentry *dentry,
 		return ERR_PTR(-ENOMEM);
 	}
 
+	lower_mnt = mntget(ecryptfs_dentry_to_lower_mnt(dentry->d_parent));
 	fsstack_copy_attr_atime(d_inode(dentry->d_parent),
-				d_inode(path->dentry));
+				d_inode(lower_dentry->d_parent));
 	BUG_ON(!d_count(lower_dentry));
 
 	ecryptfs_set_dentry_private(dentry, dentry_info);
-	dentry_info->lower_path.mnt = mntget(path->mnt);
+	dentry_info->lower_path.mnt = lower_mnt;
 	dentry_info->lower_path.dentry = lower_dentry;
 
-	/*
-	 * negative dentry can go positive under us here - its parent is not
-	 * locked.  That's OK and that could happen just as we return from
-	 * ecryptfs_lookup() anyway.  Just need to be careful and fetch
-	 * ->d_inode only once - it's not stable here.
-	 */
-	lower_inode = READ_ONCE(lower_dentry->d_inode);
-
-	if (!lower_inode) {
+	if (d_really_is_negative(lower_dentry)) {
 		/* We want to add because we couldn't find in lower */
 		d_add(dentry, NULL);
 		return NULL;
@@ -956,12 +944,6 @@ static int ecryptfs_setattr(struct dentry *dentry, struct iattr *ia)
 	}
 	mutex_unlock(&crypt_stat->cs_mutex);
 
-#ifdef FEATURE_SDCARD_ENCRYPTION
-	/* Allow touch updating timestamps. This is needed from ROS as ROS
-	 * adopt fuse and there is EPERM error without this code.
-	 */
-	ia->ia_valid |= ATTR_FORCE;
-#endif
 	rc = setattr_prepare(dentry, ia);
 	if (rc)
 		goto out;

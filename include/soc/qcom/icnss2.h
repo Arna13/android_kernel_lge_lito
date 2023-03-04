@@ -19,12 +19,6 @@
 enum icnss_uevent {
 	ICNSS_UEVENT_FW_CRASHED,
 	ICNSS_UEVENT_FW_DOWN,
-	ICNSS_UEVENT_HANG_DATA,
-};
-
-struct icnss_uevent_hang_data {
-	void *hang_event_data;
-	uint16_t hang_event_data_len;
 };
 
 struct icnss_uevent_fw_down_data {
@@ -49,14 +43,9 @@ struct icnss_driver_ops {
 	int (*pm_resume)(struct device *dev);
 	int (*suspend_noirq)(struct device *dev);
 	int (*resume_noirq)(struct device *dev);
-	int (*runtime_suspend)(struct device *dev);
-	int (*runtime_resume)(struct device *dev);
 	int (*uevent)(struct device *dev, struct icnss_uevent_data *uevent);
 	int (*idle_shutdown)(struct device *dev);
 	int (*idle_restart)(struct device *dev);
-	int (*set_therm_cdev_state)(struct device *dev,
-				    unsigned long thermal_state,
-				    int tcdev_id);
 };
 
 
@@ -80,14 +69,6 @@ struct icnss_shadow_reg_cfg {
 	u16 reg_offset;
 };
 
-struct icnss_shadow_reg_v2_cfg {
-	u32 addr;
-};
-
-struct icnss_rri_over_ddr_cfg {
-	u32 base_addr_low;
-	u32 base_addr_high;
-};
 /* CE configuration to target */
 struct icnss_wlan_enable_cfg {
 	u32 num_ce_tgt_cfg;
@@ -96,10 +77,6 @@ struct icnss_wlan_enable_cfg {
 	struct ce_svc_pipe_cfg *ce_svc_cfg;
 	u32 num_shadow_reg_cfg;
 	struct icnss_shadow_reg_cfg *shadow_reg_cfg;
-	u32 num_shadow_reg_v2_cfg;
-	struct icnss_shadow_reg_v2_cfg *shadow_reg_v2_cfg;
-	bool rri_over_ddr_cfg_valid;
-	struct icnss_rri_over_ddr_cfg rri_over_ddr_cfg;
 };
 
 /* driver modes */
@@ -159,8 +136,6 @@ extern struct dma_iommu_mapping *icnss_smmu_get_mapping(struct device *dev);
 extern struct iommu_domain *icnss_smmu_get_domain(struct device *dev);
 extern int icnss_smmu_map(struct device *dev, phys_addr_t paddr,
 			  uint32_t *iova_addr, size_t size);
-extern int icnss_smmu_unmap(struct device *dev,
-			    uint32_t iova_addr, size_t size);
 extern unsigned int icnss_socinfo_get_serial_number(struct device *dev);
 extern bool icnss_is_qmi_disable(struct device *dev);
 extern bool icnss_is_fw_ready(void);
@@ -177,17 +152,4 @@ extern int icnss_get_user_msi_assignment(struct device *dev, char *user_name,
 extern int icnss_get_msi_irq(struct device *dev, unsigned int vector);
 extern void icnss_get_msi_address(struct device *dev, u32 *msi_addr_low,
 			   u32 *msi_addr_high);
-extern int icnss_qmi_send(struct device *dev, int type, void *cmd,
-			  int cmd_len, void *cb_ctx,
-			  int (*cb)(void *ctx, void *event, int event_len));
-extern int icnss_force_wake_request(struct device *dev);
-extern int icnss_force_wake_release(struct device *dev);
-extern int icnss_is_device_awake(struct device *dev);
-extern int icnss_thermal_cdev_register(struct device *dev,
-					unsigned long max_state,
-					int tcdev_id);
-extern void icnss_thermal_cdev_unregister(struct device *dev, int tcdev_id);
-extern int icnss_get_curr_therm_cdev_state(struct device *dev,
-					    unsigned long *thermal_state,
-					    int tcdev_id);
 #endif /* _ICNSS_WLAN_H_ */

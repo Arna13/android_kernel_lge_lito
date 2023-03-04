@@ -21,14 +21,12 @@ enum cnss_bus_width_type {
 	CNSS_BUS_WIDTH_LOW,
 	CNSS_BUS_WIDTH_MEDIUM,
 	CNSS_BUS_WIDTH_HIGH,
-	CNSS_BUS_WIDTH_VERY_HIGH,
-	CNSS_BUS_WIDTH_LOW_LATENCY
+	CNSS_BUS_WIDTH_VERY_HIGH
 };
 
 enum cnss_platform_cap_flag {
 	CNSS_HAS_EXTERNAL_SWREG = 0x01,
 	CNSS_HAS_UART_ACCESS = 0x02,
-	CNSS_HAS_DRV_SUPPORT = 0x04,
 };
 
 struct cnss_platform_cap {
@@ -69,25 +67,6 @@ struct cnss_wlan_runtime_ops {
 	int (*runtime_resume)(struct pci_dev *pdev);
 };
 
-enum cnss_driver_status {
-	CNSS_UNINITIALIZED,
-	CNSS_INITIALIZED,
-	CNSS_LOAD_UNLOAD,
-	CNSS_RECOVERY,
-	CNSS_FW_DOWN,
-	CNSS_HANG_EVENT,
-};
-
-struct cnss_hang_event {
-	void *hang_event_data;
-	u16 hang_event_data_len;
-};
-
-struct cnss_uevent_data {
-	enum cnss_driver_status status;
-	void *data;
-};
-
 struct cnss_wlan_driver {
 	char *name;
 	int  (*probe)(struct pci_dev *pdev, const struct pci_device_id *id);
@@ -104,10 +83,16 @@ struct cnss_wlan_driver {
 	int  (*resume_noirq)(struct pci_dev *pdev);
 	void (*modem_status)(struct pci_dev *pdev, int state);
 	void (*update_status)(struct pci_dev *pdev, uint32_t status);
-	int  (*update_event)(struct pci_dev *pdev,
-			     struct cnss_uevent_data *uevent);
 	struct cnss_wlan_runtime_ops *runtime_ops;
 	const struct pci_device_id *id_table;
+};
+
+enum cnss_driver_status {
+	CNSS_UNINITIALIZED,
+	CNSS_INITIALIZED,
+	CNSS_LOAD_UNLOAD,
+	CNSS_RECOVERY,
+	CNSS_FW_DOWN,
 };
 
 struct cnss_ce_tgt_pipe_cfg {
@@ -182,7 +167,6 @@ extern void cnss_schedule_recovery(struct device *dev,
 extern int cnss_self_recovery(struct device *dev,
 			      enum cnss_recovery_reason reason);
 extern int cnss_force_fw_assert(struct device *dev);
-extern int cnss_force_fw_assert_async(struct device *dev);
 extern int cnss_force_collect_rddm(struct device *dev);
 extern int cnss_qmi_send_get(struct device *dev);
 extern int cnss_qmi_send_put(struct device *dev);
@@ -215,7 +199,6 @@ extern int cnss_wlan_pm_control(struct device *dev, bool vote);
 extern int cnss_auto_suspend(struct device *dev);
 extern int cnss_auto_resume(struct device *dev);
 extern int cnss_pci_is_drv_connected(struct device *dev);
-extern int cnss_pci_force_wake_request_sync(struct device *dev, int timeout);
 extern int cnss_pci_force_wake_request(struct device *dev);
 extern int cnss_pci_is_device_awake(struct device *dev);
 extern int cnss_pci_force_wake_release(struct device *dev);

@@ -63,16 +63,11 @@ void touch_report_cancel_event(struct touch_core_data *ts)
 			input_report_key(ts->input, BTN_TOOL_FINGER, 1);
 			input_report_abs(ts->input, ABS_MT_PRESSURE,
 					255);
-			if (!ts->role.encryption_coordi) {
-				TOUCH_I("finger canceled:<%d>(%4d,%4d,%4d)\n",
-						i,
-						ts->tdata[i].x,
-						ts->tdata[i].y,
-						ts->tdata[i].pressure);
-			}
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-			encryption_coordinate(ts, i, CANCELED);
-#endif
+			TOUCH_I("finger canceled:<%d>(%4d,%4d,%4d)\n",
+					i,
+					ts->tdata[i].x,
+					ts->tdata[i].y,
+					ts->tdata[i].pressure);
 		}
 	}
 
@@ -140,17 +135,12 @@ static void touch_report_event(struct touch_core_data *ts)
 					TOUCH_I("%d finger pressed:<%d>(xxxx,xxxx,xxxx)\n",
 							ts->tcount, i);
 				} else {
-					if (!ts->role.encryption_coordi) {
-						TOUCH_I("%d finger pressed:<%d>(%4d,%4d,%4d)\n",
-								ts->tcount,
-								i,
-								ts->tdata[i].x,
-								ts->tdata[i].y,
-								ts->tdata[i].pressure);
-					}
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-					encryption_coordinate(ts, i, PRESSED);
-#endif
+					TOUCH_I("%d finger pressed:<%d>(%4d,%4d,%4d)\n",
+							ts->tcount,
+							i,
+							ts->tdata[i].x,
+							ts->tdata[i].y,
+							ts->tdata[i].pressure);
 				}
 			}
 		} else if (release_mask & (1 << i)) {
@@ -160,16 +150,11 @@ static void touch_report_event(struct touch_core_data *ts)
 				TOUCH_I(" finger released:<%d>(xxxx,xxxx,xxxx)\n",
 						i);
 			} else {
-				if (!ts->role.encryption_coordi) {
-					TOUCH_I(" finger released:<%d>(%4d,%4d,%4d)\n",
-							i,
-							ts->tdata[i].x,
-							ts->tdata[i].y,
-							ts->tdata[i].pressure);
-				}
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-				encryption_coordinate(ts, i, RELEASED);
-#endif
+				TOUCH_I(" finger released:<%d>(%4d,%4d,%4d)\n",
+						i,
+						ts->tdata[i].x,
+						ts->tdata[i].y,
+						ts->tdata[i].pressure);
 			}
 		}
 	}
@@ -188,16 +173,12 @@ void touch_report_all_event(struct touch_core_data *ts)
 	TOUCH_TRACE();
 
 	ts->is_cancel = 1;
-	if (ts->role.use_synaptics_touchcomm)
-		mutex_lock(&ts->finger_mask_lock);
 	if (ts->old_mask) {
 		ts->new_mask = 0;
 		touch_report_event(ts);
 		ts->tcount = 0;
 		memset(ts->tdata, 0, sizeof(struct touch_data) * MAX_FINGER);
 	}
-	if (ts->role.use_synaptics_touchcomm)
-		mutex_unlock(&ts->finger_mask_lock);
 	ts->is_cancel = 0;
 }
 
@@ -213,13 +194,13 @@ irqreturn_t touch_irq_handler(int irq, void *dev_id)
 
 	TOUCH_TRACE();
 
-	if (atomic_cmpxchg((&ts->state.pm), DEV_PM_SUSPEND, DEV_PM_SUSPEND_IRQ)
-			>= DEV_PM_SUSPEND) {
-		TOUCH_I("interrupt in suspend[%d]\n", atomic_read(&ts->state.pm));
+	if (atomic_read(&ts->state.pm) >= DEV_PM_SUSPEND) {
+		TOUCH_I("interrupt in suspend[%d]\n",
+				atomic_read(&ts->state.pm));
+		atomic_set(&ts->state.pm, DEV_PM_SUSPEND_IRQ);
 		pm_wakeup_event(ts->dev, 1000);
 		return IRQ_HANDLED;
-    }
-
+	}
 	return IRQ_WAKE_THREAD;
 }
 
@@ -234,15 +215,9 @@ irqreturn_t touch_irq_thread(int irq, void *dev_id)
 	if (secure_touch_filter_interrupt(ts) == IRQ_HANDLED)
 		return IRQ_HANDLED;
 #endif
-	if (ts->role.use_synaptics_touchcomm)
-		mutex_lock(&ts->irq_lock);
-	else
-		mutex_lock(&ts->lock);
+	mutex_lock(&ts->lock);
 
 	ts->intr_status = 0;
-
-	if (ts->role.use_synaptics_touchcomm)
-		mutex_lock(&ts->finger_mask_lock);
 	ret = ts->driver->irq_handler(ts->dev);
 
 	if (ret >= 0) {
@@ -254,9 +229,6 @@ irqreturn_t touch_irq_thread(int irq, void *dev_id)
 #endif
 			touch_report_event(ts);
 		}
-
-		if (ts->role.use_synaptics_touchcomm)
-			mutex_unlock(&ts->finger_mask_lock);
 
 		if (ts->intr_status & TOUCH_IRQ_KNOCK)
 			touch_send_uevent(ts, TOUCH_UEVENT_KNOCK);
@@ -294,12 +266,8 @@ irqreturn_t touch_irq_thread(int irq, void *dev_id)
 		if (ts->intr_status & TOUCH_IRQ_SWIPE_RIGHT2)
 			touch_send_uevent(ts, TOUCH_UEVENT_SIDE_PAY);
 
-		if (ts->intr_status & TOUCH_IRQ_LPWG_LONGPRESS_DOWN) {
-			input_report_key(ts->input, BTN_LPWG, 1);
+		if (ts->intr_status & TOUCH_IRQ_LPWG_LONGPRESS_DOWN)
 			touch_send_uevent(ts, TOUCH_UEVENT_LPWG_LONGPRESS_DOWN);
-			input_report_key(ts->input, BTN_LPWG, 0);
-			input_sync(ts->input);
-		}
 
 		if (ts->intr_status & TOUCH_IRQ_LPWG_LONGPRESS_UP)
 			touch_send_uevent(ts, TOUCH_UEVENT_LPWG_LONGPRESS_UP);
@@ -314,9 +282,6 @@ irqreturn_t touch_irq_thread(int irq, void *dev_id)
 			touch_send_uevent(ts, TOUCH_UEVENT_PEN_WAKEUP_BTN);
 
 	} else {
-		if (ts->role.use_synaptics_touchcomm)
-			mutex_unlock(&ts->finger_mask_lock);
-
 		if (ret == -EGLOBALRESET) {
 			queue_delayed_work(ts->wq, &ts->panel_reset_work, 0);
 		} else if (ret == -EHWRESET_ASYNC) {
@@ -331,10 +296,7 @@ irqreturn_t touch_irq_thread(int irq, void *dev_id)
 		}
 	}
 
-	if (ts->role.use_synaptics_touchcomm)
-		mutex_unlock(&ts->irq_lock);
-	else
-		mutex_unlock(&ts->lock);
+	mutex_unlock(&ts->lock);
 
 	return IRQ_HANDLED;
 }
@@ -391,7 +353,6 @@ static void touch_init_work_func(struct work_struct *init_work)
 	mutex_unlock(&ts->lock);
 
 	if (atomic_read(&ts->state.core) == CORE_PROBE) {
-		touch_restore_state(ts);
 		queue_delayed_work(ts->wq, &ts->upgrade_work, 0);
 		return;
 	}
@@ -399,18 +360,6 @@ static void touch_init_work_func(struct work_struct *init_work)
 	atomic_set(&ts->state.core, CORE_NORMAL);
 	TOUCH_I("touch_ic_init End\n");
 }
-
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-static void touch_encryp_work_func(struct work_struct *encryp_work)
-{
-	struct touch_core_data *ts =
-		container_of(to_delayed_work(encryp_work),
-				struct touch_core_data, encryp_work);
-
-	TOUCH_TRACE();
-	generate_coeff_matrix(ts);
-}
-#endif
 
 static void touch_upgrade_work_func(struct work_struct *upgrade_work)
 {
@@ -584,10 +533,6 @@ static void touch_init_locks(struct touch_core_data *ts)
 	TOUCH_TRACE();
 
 	mutex_init(&ts->lock);
-	if (ts->role.use_synaptics_touchcomm) {
-		mutex_init(&ts->irq_lock);
-		mutex_init(&ts->finger_mask_lock);
-	}
 	device_init_wakeup(ts->dev, true);
 }
 
@@ -620,7 +565,6 @@ static int touch_init_input(struct touch_core_data *ts)
 	set_bit(EV_ABS, input->evbit);
 	set_bit(EV_KEY, input->evbit);
 	set_bit(BTN_TOUCH, input->keybit);
-	set_bit(BTN_LPWG, input->keybit);
 	set_bit(BTN_TOOL_FINGER, input->keybit);
 	set_bit(INPUT_PROP_DIRECT, input->propbit);
 	input_set_abs_params(input, ABS_MT_POSITION_X, 0,
@@ -707,13 +651,6 @@ static void touch_resume(struct device *dev)
 	TOUCH_TRACE();
 
 	TOUCH_I("%s Start\n", __func__);
-
-	if (atomic_read(&ts->state.first_resume) == FIRST_RESUME_NOT_YET) {
-		atomic_set(&ts->state.uevent, UEVENT_IDLE);
-		atomic_set(&ts->state.first_resume, FIRST_RESUME_IS_OK);
-		TOUCH_I("%s first resume! clear uevent state.\n", __func__);
-	}
-
 #if defined(CONFIG_SECURE_TOUCH)
 	if (atomic_read(&ts->st_enabled))
 		secure_touch_stop(ts, true);
@@ -840,8 +777,6 @@ static int touch_init_uevent(struct touch_core_data *ts)
 
 	TOUCH_TRACE();
 
-	atomic_set(&ts->state.first_resume, FIRST_RESUME_NOT_YET);
-
 	ret = subsys_system_register(&touch_uevent_subsys, NULL);
 	if (ret < 0)
 		TOUCH_E("%s, bus is not registered, ret : %d\n",
@@ -915,73 +850,28 @@ void touch_send_uevent(struct touch_core_data *ts, int type)
 	}
 }
 
-static int connection;
-static int wireless;
-static int earjack;
-static int fm_radio;
-static int swivel;
-
 void touch_notify_connect(u32 type)
 {
-	connection = type;
 	touch_atomic_notifier_call(NOTIFY_CONNECTION, &type);
 }
 EXPORT_SYMBOL(touch_notify_connect);
 
 void touch_notify_wireless(u32 type)
 {
-	wireless = type;
 	touch_atomic_notifier_call(NOTIFY_WIRELESS, &type);
 }
 EXPORT_SYMBOL(touch_notify_wireless);
 
 void touch_notify_earjack(u32 type)
 {
-	earjack = type;
 	touch_atomic_notifier_call(NOTIFY_EARJACK, &type);
 }
 EXPORT_SYMBOL(touch_notify_earjack);
 void touch_notify_fm_radio(u32 type)
 {
-	fm_radio = type;
 	touch_atomic_notifier_call(NOTIFY_FM_RADIO, &type);
 }
 EXPORT_SYMBOL(touch_notify_fm_radio);
-void touch_notify_swivel(u32 type)
-{
-	swivel = type;
-	touch_atomic_notifier_call(NOTIFY_SWIVEL, &type);
-}
-EXPORT_SYMBOL(touch_notify_swivel);
-
-void touch_restore_state(struct touch_core_data *ts) {
-
-	TOUCH_TRACE();
-
-	if (atomic_read(&ts->state.connect) != connection) {
-		TOUCH_I("%s: need to restore connection (%d)\n", __func__, connection);
-		touch_notify_connect(connection);
-	}
-
-	if (atomic_read(&ts->state.wireless) != wireless) {
-		TOUCH_I("%s: need to restore wireless (%d)\n", __func__, wireless);
-		touch_notify_wireless(wireless);
-	}
-
-	if (atomic_read(&ts->state.earjack) != earjack) {
-		TOUCH_I("%s: need to restore earjack (%d)\n", __func__, earjack);
-		touch_notify_earjack(earjack);
-	}
-
-	if (atomic_read(&ts->state.fm_radio) != fm_radio) {
-		TOUCH_I("%s: need to restore fm_radio (%d)\n", __func__, fm_radio);
-		touch_notify_fm_radio(fm_radio);
-	}
-	if (atomic_read(&ts->state.swivel) != swivel) {
-		TOUCH_I("%s: need to restore swivel (%d)\n", __func__, swivel);
-		touch_notify_swivel(swivel);
-	}
-}
 
 static int touch_notify(struct touch_core_data *ts,
 				   unsigned long event, void *data)
@@ -1031,10 +921,7 @@ static int touch_notify(struct touch_core_data *ts,
 			atomic_set(&ts->state.fm_radio, *(int *)data);
 			ret = ts->driver->notify(ts->dev, event, data);
 			break;
-		case NOTIFY_SWIVEL:
-			atomic_set(&ts->state.swivel, *(int *)data);
-			ret = ts->driver->notify(ts->dev, event, data);
-			break;
+
 		default:
 			ret = ts->driver->notify(ts->dev, event, data);
 			break;
@@ -1069,8 +956,7 @@ static int display_notify(struct touch_core_data *ts,
 		return 0;
 	}
 
-	if (ts->driver->notify && !panel_data->display_id) { //panel_data->display_id : 0(main_panel)
-
+	if (ts->driver->notify) {
 		mutex_lock(&ts->lock);
 		switch (event) {
 		case LGE_PANEL_EVENT_BLANK:
@@ -1172,10 +1058,6 @@ static int touch_atomic_notifier_callback(struct notifier_block *this,
 		arr[ATOMIC_NOTIFY_FM_RADIO].event = event;
 		arr[ATOMIC_NOTIFY_FM_RADIO].data = *(int *)data;
 		break;
-	case NOTIFY_SWIVEL:
-		arr[ATOMIC_NOTIFY_SWIVEL].event = event;
-		arr[ATOMIC_NOTIFY_SWIVEL].data = *(int *)data;
-		break;
 	default:
 		TOUCH_I("%s: unknown event(%lu)\n", __func__, event);
 		return 0;
@@ -1247,9 +1129,6 @@ static int touch_init_works(struct touch_core_data *ts)
 	INIT_DELAYED_WORK(&ts->notify_work, touch_atomic_notifer_work_func);
 	INIT_DELAYED_WORK(&ts->fb_work, touch_fb_work_func);
 	INIT_DELAYED_WORK(&ts->panel_reset_work, touch_panel_reset_work_func);
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-	INIT_DELAYED_WORK(&ts->encryp_work, touch_encryp_work_func);
-#endif
 	init_completion(&ts->uevent_complete);
 
 	return 0;
@@ -1432,13 +1311,8 @@ static int touch_core_probe_normal(struct platform_device *pdev)
 	ts->lpwg.sensor = PROX_FAR;
 
 	ts->driver->power(ts->dev, POWER_ON);
-#if defined(CONFIG_LGE_TOUCH_LGSIC_SW42902_WING)
-	touch_msleep(ts->caps.hw_reset_delay);
-	TOUCH_E("because this is WING model, we don't reset control and just power on during probe()!!!!!!!!!!\n");
-#else
 	ts->driver->power(ts->dev, POWER_OFF);
 	ts->driver->power(ts->dev, POWER_ON);
-#endif
 
 	touch_init_locks(ts);
 	ret = touch_init_works(ts);
@@ -1477,11 +1351,6 @@ static int touch_core_probe_normal(struct platform_device *pdev)
 
 #if defined(CONFIG_TRUSTONIC_TRUSTED_UI)
 	register_tui_hal_sysfs(tui_sysfs_ctl);
-#endif
-	atomic_set(&ts->state.swivel, SWIVEL_NOT_INITIALIZED);
-
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-	queue_delayed_work(ts->wq, &ts->encryp_work, 0);
 #endif
 
 	TOUCH_I("hw_reset_delay : %d ms\n", ts->caps.hw_reset_delay);

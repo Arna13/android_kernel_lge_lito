@@ -292,8 +292,7 @@ int pen_callback(struct device *dev, void *touch_core_data, void *data, int cont
 			input_report_abs(input, ABS_TILT_X, pdata->tilt);
 			input_report_abs(input, ABS_TILT_Y, pdata->azimuth);
 			if (ts->lpwg.screen) {
-				if (!atomic_read(&ts->state.active_pen) && pdata->state == 0
-							&& atomic_read(&ts->state.first_resume) == FIRST_RESUME_IS_OK) {
+				if (!atomic_read(&ts->state.active_pen) && pdata->state == 0) {
 					touch_send_uevent(ts, TOUCH_UEVENT_PEN_DETECTION);
 					pdata->state = 1;
 				}

@@ -50,8 +50,6 @@
  */
 #define ESE_PERFORM_COLD_RESET  _IOW(P61_MAGIC, 0x0C, unsigned int) // LGE MODIFY long -> unsigned int
 
-#define PERFORM_RESET_PROTECTION  _IOW(P61_MAGIC, 0x0D, unsigned int) // LGE MODIFY long -> unsigned int
-
 struct p61_spi_platform_data {
     unsigned int irq_gpio;
     unsigned int rst_gpio;

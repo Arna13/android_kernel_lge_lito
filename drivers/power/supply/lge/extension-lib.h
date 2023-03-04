@@ -40,13 +40,9 @@ struct ext_smb_charger {
 	struct gpio_desc	*vconn_boost_en_gpio;
 	struct gpio_desc	*ds_en_gpio;
 	struct gpio_desc	*load_sw_on_gpio;
-	struct gpio_desc	*otg_wlc_en_gpio;
-	struct gpio_desc	*otg_wlc_on_gpio;
 
 	bool is_usb_configured;
-	bool is_usb_compliance_mode;
 	bool is_hall_ic;
-	int settled_ua;
 
 	struct work_struct	wa_get_pmic_dump_work;
 
@@ -104,10 +100,6 @@ struct ext_smb_charger {
 	// Clear DC Reverse Voltage status
 	bool enable_clear_dc_reverse_volt;
 
-	// For concurrency between otg and wireless
-	bool concurrency_otg_wlc;
-	bool enable_concurrency_otg_wlc;
-
 	// Rerun DC AICL.
 	bool enable_dcin_rerun_aicl;
 	struct delayed_work	wa_dcin_rerun_aicl_dwork;
@@ -115,9 +107,6 @@ struct ext_smb_charger {
 	// Recovery vashdn during wireless charging
 	bool enable_recovery_vashdn_wireless;
 	struct delayed_work	wa_recovery_vashdn_wireless_dwork;
-
-	// Avoid FOD Status by certain wireless charger
-	bool enable_avoid_fod_status;
 
 	// Retry to enable vconn on vconn-oc
 	bool enable_retry_vconn_with_oc;
@@ -153,10 +142,6 @@ struct ext_smb_charger {
 
 	// Disable CP charging in battery fake mode
 	bool enable_disable_cp_with_fake_mode;
-
-	// Disable hiccup of otg in compliance mode
-	bool enable_disable_otg_hiccup;
-	struct delayed_work wa_disable_otg_hiccup_dwork;
 
 	// Recover & Fake CC status in factory mode.
 	bool enable_recover_cc;
@@ -226,7 +211,6 @@ int extension_get_apsd_result(struct smb_charger *chg);
 void extension_typec_src_removal(struct smb_charger *chg);
 void extension_smb5_determine_initial_status(struct smb_charger *chg, void *data);
 void extension_hvdcp_detect_try_enable(struct smb_charger *chg, bool enable);
-void extension_icl_change(struct smb_charger *chg, int settled_ua);
 
 int override_vconn_regulator_enable(struct regulator_dev *rdev);
 int override_vconn_regulator_disable(struct regulator_dev *rdev);
@@ -245,7 +229,6 @@ irqreturn_t override_typec_vconn_oc_irq_handler(int irq, void *data);
 irqreturn_t override_dcin_irq_handler(int irq, void *data);
 irqreturn_t override_dc_plugin_irq_handler(int irq, void *data);
 irqreturn_t override_dcin_uv_irq_handler(int irq, void *data);
-irqreturn_t override_otg_oc_hiccup_irq_handler(int irq, void *data);
 irqreturn_t override_otg_fault_irq_handler(int irq, void *data);
 
 bool wa_detect_standard_hvdcp_check(void);
@@ -254,13 +237,10 @@ void wa_resuming_suspended_usbin_trigger(struct smb_charger* chg);
 void wa_clear_dc_reverse_volt_trigger(bool enable);
 void wa_dcin_rerun_aicl_trigger(struct smb_charger* chg);
 void wa_dcin_rerun_aicl_clear(struct smb_charger* chg);
-bool wa_get_concurrency_mode_for_otg_wlc(void);
 void wa_recovery_vashdn_wireless_trigger(struct smb_charger* chg);
-void wa_avoid_fod_status_trigger(struct smb_charger* chg);
 bool wa_charging_without_cc_is_running(struct smb_charger* chg);
 void wa_retry_vconn_enable_on_vconn_oc_trigger(struct smb_charger* chg);
 bool wa_fake_cc_status_is_runnging(struct smb_charger *chg);
-void wa_disable_otg_hiccup_trigger(struct smb_charger *chg);
 bool wa_charging_with_rd_is_running(struct smb_charger* chg);
 int wa_protect_overcharging(struct smb_charger* chg, int input_present);
 bool wa_avoiding_mbg_fault_usbid(bool enable);

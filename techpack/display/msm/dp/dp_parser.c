@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/of_gpio.h>
@@ -706,10 +706,6 @@ static int dp_parser_mst(struct dp_parser *parser)
 
 	parser->has_mst = of_property_read_bool(dev->of_node,
 			"qcom,mst-enable");
-
-	parser->no_mst_encoder = of_property_read_bool(dev->of_node,
-			"qcom,no-mst-encoder");
-
 	parser->has_mst_sideband = parser->has_mst;
 
 	DP_DEBUG("mst parsing successful. mst:%d\n", parser->has_mst);
@@ -780,14 +776,6 @@ static void lge_dp_parser_dp_use(struct dp_parser *parser)
 
 	pr_debug("lge,dp-use parsing successful. dp-use:%d\n",
 			parser->lge_dp_use);
-
-#ifdef CONFIG_LGE_DUAL_SCREEN
-	parser->lge_dp_aux_sel_inverse = of_property_read_bool(dev->of_node,
-			"lge,dp-aux_sel_inverse");
-
-	pr_info("lge,dp-aux_sel_inverse parsing successful. lge_dp_aux_sel_inverse:%d\n",
-			parser->lge_dp_aux_sel_inverse);
-#endif
 }
 #endif
 

@@ -378,7 +378,7 @@ static void *usbpd_ipc_log;
 #define PD_MAX_DATA_OBJ		7
 
 #define PD_SRC_CAP_EXT_DB_LEN	24
-#define PD_STATUS_DB_LEN	6
+#define PD_STATUS_DB_LEN	5
 #define PD_BATTERY_CAP_DB_LEN	9
 
 #define PD_MAX_EXT_MSG_LEN		260
@@ -514,14 +514,14 @@ struct usbpd {
 	struct device		dev;
 	struct workqueue_struct	*wq;
 	struct work_struct	sm_work;
-#ifdef CONFIG_LGE_USB
+#ifdef CONFIG_LGE_DUAL_SCREEN
 	struct work_struct      stop_periph_work;
 #endif
 	struct work_struct	start_periph_work;
 	struct hrtimer		timer;
 	bool			sm_queued;
 #ifdef CONFIG_LGE_USB
-	//struct wakeup_source	wake_lock;
+	struct wakeup_source	wake_lock;
 #endif
 
 	struct extcon_dev	*extcon;
@@ -682,16 +682,11 @@ static int set_usb_compliance_mode(const char *val,
 		return -ENODEV;
 
 	if (usb_compliance_mode) {
-		//__pm_stay_awake(&pd->wake_lock);
+		__pm_stay_awake(&pd->wake_lock);
 	} else {
-		//__pm_relax(&pd->wake_lock);
+		__pm_relax(&pd->wake_lock);
 	}
-#ifdef CONFIG_LGE_PM
-	{
-		extern void wa_update_usb_compliance_mode(bool mode);
-		wa_update_usb_compliance_mode(usb_compliance_mode);
-	}
-#endif
+
 	return 0;
 }
 
@@ -842,11 +837,6 @@ static inline void start_usb_peripheral(struct usbpd *pd)
 		val.intval = 0;
 	else
 #endif
-#ifdef CONFIG_LGE_USB
-	if (pd->typec_mode == POWER_SUPPLY_TYPEC_NONE && usb_compliance_mode)
-		val.intval = 0;
-	else
-#endif
 	val.intval = 1;
 	extcon_set_property(pd->extcon, EXTCON_USB, EXTCON_PROP_USB_SS, val);
 
@@ -888,19 +878,8 @@ static void start_usb_peripheral_work(struct work_struct *w)
 	start_usb_peripheral(pd);
 	typec_set_data_role(pd->typec_port, TYPEC_DEVICE);
 	typec_set_pwr_role(pd->typec_port, TYPEC_SINK);
-#ifdef CONFIG_LGE_USB
-	if (pd->typec_mode <= POWER_SUPPLY_TYPEC_SOURCE_DEFAULT) {
-		typec_set_pwr_opmode(pd->typec_port, TYPEC_PWR_MODE_USB);
-	} else if (pd->typec_mode >= POWER_SUPPLY_TYPEC_SOURCE_DEBUG_ACCESSORY_DEFAULT) {
-		typec_set_pwr_opmode(pd->typec_port, TYPEC_PWR_MODE_PD);
-	} else {
-		typec_set_pwr_opmode(pd->typec_port,
-			pd->typec_mode - POWER_SUPPLY_TYPEC_SOURCE_DEFAULT);
-	}
-#else
 	typec_set_pwr_opmode(pd->typec_port,
-		pd->typec_mode - POWER_SUPPLY_TYPEC_SOURCE_DEFAULT);
-#endif
+			pd->typec_mode - POWER_SUPPLY_TYPEC_SOURCE_DEFAULT);
 	if (!pd->partner) {
 		memset(&pd->partner_identity, 0, sizeof(pd->partner_identity));
 		pd->partner_desc.usb_pd = false;
@@ -1383,22 +1362,13 @@ static void pd_send_hard_reset(struct usbpd *pd)
 	pd->hard_reset_count++;
 	pd_phy_signal(HARD_RESET_SIG);
 	pd->in_pr_swap = false;
+#ifndef CONFIG_LGE_USB
 	pd->pd_connected = false;
+#endif
 	power_supply_set_property(pd->usb_psy, POWER_SUPPLY_PROP_PR_SWAP, &val);
 }
 
-#if defined(CONFIG_LGE_USB) && defined(DEBUG)
-static void kick_sm_(struct usbpd *pd, int ms);
-#define kick_sm(pd, ms) \
-	do { \
-		usbpd_dbg(&pd->dev, "kick_sm(%d ms) from %s\n", ms, __func__); \
-		kick_sm_(pd, ms); \
-	} while (0)
-
-static void kick_sm_(struct usbpd *pd, int ms)
-#else
 static void kick_sm(struct usbpd *pd, int ms)
-#endif
 {
 	pm_stay_awake(&pd->dev);
 	pd->sm_queued = true;
@@ -1671,11 +1641,6 @@ static void phy_msg_received(struct usbpd *pd, enum pd_sop_type sop,
 
 	if (!work_busy(&pd->sm_work))
 		kick_sm(pd, 0);
-#ifdef CONFIG_LGE_USB
-	else if ((pd->current_state == PE_SNK_READY ||
-			pd->current_state == PE_SRC_READY) && usb_compliance_mode)
-		kick_sm(pd, 0);
-#endif
 	else
 		usbpd_dbg(&pd->dev, "usbpd_sm already running\n");
 }
@@ -1885,8 +1850,12 @@ int usbpd_send_svdm(struct usbpd *pd, u16 svid, u8 cmd,
 		enum usbpd_svdm_cmd_type cmd_type, int obj_pos,
 		const u32 *vdos, int num_vdos)
 {
-	u32 svdm_hdr = SVDM_HDR(svid, pd->spec_rev == USBPD_REV_30 ? 1 : 0,
-			obj_pos, cmd_type, cmd);
+#ifdef CONFIG_LGE_USB
+	u32 svdm_hdr = SVDM_HDR(svid, (pd->spec_rev == USBPD_REV_30) ? 1 : 0,
+				obj_pos, cmd_type, cmd);
+#else
+	u32 svdm_hdr = SVDM_HDR(svid, 0, obj_pos, cmd_type, cmd);
+#endif
 
 #ifdef CONFIG_LGE_DUAL_SCREEN
 	if (check_ds_connect_state() >= DS_STATE_ACC_ID_CONNECTED && svid == 0xFF01)
@@ -1895,9 +1864,8 @@ int usbpd_send_svdm(struct usbpd *pd, u16 svid, u8 cmd,
 		return 0;
 	}
 #endif
-	usbpd_dbg(&pd->dev, "VDM tx: svid:%04x ver:%d obj_pos:%d cmd:%x cmd_type:%x svdm_hdr:%x\n",
-			svid, pd->spec_rev == USBPD_REV_30 ? 1 : 0, obj_pos,
-			cmd, cmd_type, svdm_hdr);
+	usbpd_dbg(&pd->dev, "VDM tx: svid:%x cmd:%x cmd_type:%x svdm_hdr:%x\n",
+			svid, cmd, cmd_type, svdm_hdr);
 
 	return usbpd_send_vdm(pd, svdm_hdr, vdos, num_vdos);
 }
@@ -2115,7 +2083,7 @@ static void handle_vdm_rx(struct usbpd *pd, struct rx_msg *rx_msg)
 	ktime_t recvd_time = ktime_get();
 
 	usbpd_dbg(&pd->dev,
-			"VDM rx: svid:%04x cmd:%x cmd_type:%x vdm_hdr:%x has_dp: %s\n",
+			"VDM rx: svid:%x cmd:%x cmd_type:%x vdm_hdr:%x has_dp: %s\n",
 			svid, cmd, cmd_type, vdm_hdr,
 			pd->has_dp ? "true" : "false");
 
@@ -2171,9 +2139,11 @@ static void handle_vdm_rx(struct usbpd *pd, struct rx_msg *rx_msg)
 		return;
 	}
 
-	if (SVDM_HDR_VER(vdm_hdr) > 1)
-		usbpd_dbg(&pd->dev, "Received SVDM with unsupported version:%d\n",
+	if (SVDM_HDR_VER(vdm_hdr) > 1) {
+		usbpd_dbg(&pd->dev, "Discarding SVDM with incorrect version:%d\n",
 				SVDM_HDR_VER(vdm_hdr));
+		return;
+	}
 
 	if (cmd_type != SVDM_CMD_TYPE_INITIATOR &&
 			pd->current_state != PE_SRC_STARTUP_WAIT_FOR_VDM_RESP)
@@ -2181,14 +2151,6 @@ static void handle_vdm_rx(struct usbpd *pd, struct rx_msg *rx_msg)
 
 	if (handler && handler->svdm_received) {
 		handler->svdm_received(handler, cmd, cmd_type, vdos, num_vdos);
-		switch (cmd) {
-		case DP_USBPD_VDM_CONFIGURE:
-			if (!handler->discovered)
-				handler->discovered = true;
-			break;
-		default:
-			break;
-		}
 
 		/* handle any previously queued TX */
 		if (pd->vdm_tx && !pd->sm_queued)
@@ -3100,7 +3062,6 @@ static void enter_state_src_negotiate_capability(struct usbpd *pd)
 
 static void enter_state_src_ready(struct usbpd *pd)
 {
-#ifndef CONFIG_LGE_USB
 	/*
 	 * USB Host stack was started at PE_SRC_STARTUP but if peer
 	 * doesn't support USB communication, we can turn it off
@@ -3108,7 +3069,6 @@ static void enter_state_src_ready(struct usbpd *pd)
 	if (pd->current_dr == DR_DFP && !pd->peer_usb_comm &&
 			!pd->in_explicit_contract)
 		stop_usb_host(pd);
-#endif
 
 #ifdef CONFIG_DUAL_ROLE_USB_INTF
 	if (!pd->in_explicit_contract)
@@ -3773,11 +3733,7 @@ static bool handle_data_snk_ready(struct usbpd *pd, struct rx_msg *rx_msg)
 			break;
 		}
 		memcpy(&ado, rx_msg->payload, sizeof(ado));
-#ifdef CONFIG_LGE_USB
-		usbpd_info(&pd->dev, "Received Alert 0x%08x\n", ado);
-#else
 		usbpd_dbg(&pd->dev, "Received Alert 0x%08x\n", ado);
-#endif
 
 		/*
 		 * Don't send Get_Status right away so we can coalesce
@@ -3785,11 +3741,7 @@ static bool handle_data_snk_ready(struct usbpd *pd, struct rx_msg *rx_msg)
 		 * in the way of any other AMS that might happen.
 		 */
 		pd->send_get_status = true;
-#ifdef CONFIG_LGE_USB
-		kick_sm(pd, 0);
-#else
 		kick_sm(pd, 150);
-#endif
 		break;
 	case MSG_BATTERY_STATUS:
 		if (rx_msg->data_len != sizeof(pd->battery_sts_dobj)) {
@@ -3829,15 +3781,13 @@ static bool handle_ext_snk_ready(struct usbpd *pd, struct rx_msg *rx_msg)
 		complete(&pd->is_ready);
 		break;
 	case MSG_STATUS:
-		if (rx_msg->data_len > PD_STATUS_DB_LEN)
-			usbpd_err(&pd->dev, "Invalid status db length:%d\n",
-					rx_msg->data_len);
-
-		memset(&pd->status_db, 0, sizeof(pd->status_db));
+		if (rx_msg->data_len != PD_STATUS_DB_LEN) {
+			usbpd_err(&pd->dev, "Invalid status db\n");
+			break;
+		}
 		memcpy(&pd->status_db, rx_msg->payload,
-			min((size_t)rx_msg->data_len, sizeof(pd->status_db)));
+			sizeof(pd->status_db));
 		kobject_uevent(&pd->dev.kobj, KOBJ_CHANGE);
-		complete(&pd->is_ready);
 		break;
 	case MSG_BATTERY_CAPABILITIES:
 		if (rx_msg->data_len != PD_BATTERY_CAP_DB_LEN) {
@@ -6158,9 +6108,9 @@ static int usbpd_uevent(struct device *dev, struct kobj_uevent_env *env)
 				"explicit" : "implicit");
 	add_uevent_var(env, "ALT_MODE=%d", pd->vdm_state == MODE_ENTERED);
 
-	add_uevent_var(env, "SDB=%02x %02x %02x %02x %02x %02x",
-			pd->status_db[0], pd->status_db[1], pd->status_db[2],
-			pd->status_db[3], pd->status_db[4], pd->status_db[5]);
+	add_uevent_var(env, "SDB=%02x %02x %02x %02x %02x", pd->status_db[0],
+			pd->status_db[1], pd->status_db[2], pd->status_db[3],
+			pd->status_db[4]);
 
 	return 0;
 }
@@ -6359,27 +6309,11 @@ static ssize_t select_pdo_store(struct device *dev,
 	int pdo, uv = 0, ua = 0;
 	int ret;
 
-#ifdef CONFIG_LGE_USB
-	usbpd_dbg(&pd->dev, "%s\n", __func__);
-#endif
-
 	mutex_lock(&pd->swap_lock);
 
 #ifdef CONFIG_LGE_USB
 	if (pd->in_suspend) {
 		usbpd_err(&pd->dev, "select_pdo: Cannot select new PDO in suspend\n");
-		ret = -EBUSY;
-		goto out;
-	}
-
-	if (work_busy(&pd->sm_work)) {
-		usbpd_err(&pd->dev, "select_pdo: usbpd_sm already running\n");
-		ret = -EBUSY;
-		goto out;
-	}
-
-	if (pd->sm_queued) {
-		usbpd_err(&pd->dev, "select_pdo: usbpd_sm already queueing\n");
 		ret = -EBUSY;
 		goto out;
 	}
@@ -6426,11 +6360,7 @@ static ssize_t select_pdo_store(struct device *dev,
 	/* wait for operation to complete */
 	if (!wait_for_completion_timeout(&pd->is_ready,
 			msecs_to_jiffies(1000))) {
-#ifdef CONFIG_LGE_USB
-		usbpd_err(&pd->dev, "%s: request timed out\n", __func__);
-#else
 		usbpd_err(&pd->dev, "request timed out\n");
-#endif
 		ret = -ETIMEDOUT;
 		goto out;
 	}
@@ -6554,24 +6484,6 @@ static int trigger_tx_msg(struct usbpd *pd, bool *msg_tx_flag)
 {
 	int ret = 0;
 
-#ifdef CONFIG_LGE_USB
-	usbpd_dbg(&pd->dev, "%s\n", __func__);
-
-	mutex_lock(&pd->swap_lock);
-
-	if (work_busy(&pd->sm_work)) {
-		usbpd_err(&pd->dev, "trigger_tx_msg: usbpd_sm already running\n");
-		ret = -EBUSY;
-		goto out;
-	}
-
-	if (pd->sm_queued) {
-		usbpd_err(&pd->dev, "trigger_tx_msg: usbpd_sm already queueing\n");
-		ret = -EBUSY;
-		goto out;
-	}
-#endif
-
 	/* Only allowed if we are already in explicit sink contract */
 	if (pd->current_state != PE_SNK_READY) {
 		usbpd_err(&pd->dev, "Cannot send msg\n");
@@ -6586,19 +6498,12 @@ static int trigger_tx_msg(struct usbpd *pd, bool *msg_tx_flag)
 	/* wait for operation to complete */
 	if (!wait_for_completion_timeout(&pd->is_ready,
 			msecs_to_jiffies(1000))) {
-#ifdef CONFIG_LGE_USB
-		usbpd_err(&pd->dev, "%s: request timed out\n", __func__);
-#else
 		usbpd_err(&pd->dev, "request timed out\n");
-#endif
 		ret = -ETIMEDOUT;
 	}
 
 out:
 	*msg_tx_flag = false;
-#ifdef CONFIG_LGE_USB
-	mutex_unlock(&pd->swap_lock);
-#endif
 	return ret;
 
 }
@@ -6608,10 +6513,6 @@ static ssize_t get_src_cap_ext_show(struct device *dev,
 {
 	int i, ret, len = 0;
 	struct usbpd *pd = dev_get_drvdata(dev);
-
-#ifdef CONFIG_LGE_USB
-	usbpd_dbg(&pd->dev, "%s\n", __func__);
-#endif
 
 	if (pd->spec_rev == USBPD_REV_20)
 		return -EINVAL;
@@ -6636,10 +6537,6 @@ static ssize_t get_status_show(struct device *dev,
 	int i, ret, len = 0;
 	struct usbpd *pd = dev_get_drvdata(dev);
 
-#ifdef CONFIG_LGE_USB
-	usbpd_dbg(&pd->dev, "%s\n", __func__);
-#endif
-
 	if (pd->spec_rev == USBPD_REV_20)
 		return -EINVAL;
 
@@ -6663,10 +6560,6 @@ static ssize_t get_pps_status_show(struct device *dev,
 	int ret;
 	struct usbpd *pd = dev_get_drvdata(dev);
 
-#ifdef CONFIG_LGE_USB
-	usbpd_dbg(&pd->dev, "%s\n", __func__);
-#endif
-
 	if (pd->spec_rev == USBPD_REV_20)
 		return -EINVAL;
 
@@ -6684,10 +6577,6 @@ static ssize_t get_battery_cap_store(struct device *dev,
 	struct usbpd *pd = dev_get_drvdata(dev);
 	u32 val;
 	int ret;
-
-#ifdef CONFIG_LGE_USB
-	usbpd_dbg(&pd->dev, "%s\n", __func__);
-#endif
 
 	if (pd->spec_rev == USBPD_REV_20 || kstrtou32(buf, 0, &val)
 			|| val != 1) {
@@ -6727,10 +6616,6 @@ static ssize_t get_battery_status_store(struct device *dev,
 	struct usbpd *pd = dev_get_drvdata(dev);
 	u32 val;
 	int ret;
-
-#ifdef CONFIG_LGE_USB
-	usbpd_dbg(&pd->dev, "%s\n", __func__);
-#endif
 
 	if (pd->spec_rev == USBPD_REV_20 || kstrtou32(buf, 0, &val)
 			|| val != 1) {
@@ -6913,7 +6798,7 @@ struct usbpd *usbpd_create(struct device *parent)
 		goto del_pd;
 	}
 	INIT_WORK(&pd->sm_work, usbpd_sm);
-#ifdef CONFIG_LGE_USB
+#ifdef CONFIG_LGE_DUAL_SCREEN
 	INIT_WORK(&pd->stop_periph_work, stop_usb_peripheral_work);
 #endif
 	INIT_WORK(&pd->start_periph_work, start_usb_peripheral_work);
@@ -6922,7 +6807,7 @@ struct usbpd *usbpd_create(struct device *parent)
 	mutex_init(&pd->swap_lock);
 	mutex_init(&pd->svid_handler_lock);
 #ifdef CONFIG_LGE_USB
-	//wakeup_source_init(&pd->wake_lock, "usb_compliance_mode");
+	wakeup_source_init(&pd->wake_lock, "usb_compliance_mode");
 #endif
 
 	pd->usb_psy = power_supply_get_by_name("usb");
@@ -7149,7 +7034,7 @@ put_psy:
 	power_supply_put(pd->usb_psy);
 destroy_wq:
 #ifdef CONFIG_LGE_USB
-	//wakeup_source_trash(&pd->wake_lock);
+	wakeup_source_trash(&pd->wake_lock);
 #endif
 	destroy_workqueue(pd->wq);
 del_pd:
@@ -7179,7 +7064,7 @@ void usbpd_destroy(struct usbpd *pd)
 		power_supply_put(pd->bms_psy);
 	destroy_workqueue(pd->wq);
 #ifdef CONFIG_LGE_USB
-	//wakeup_source_trash(&pd->wake_lock);
+	wakeup_source_trash(&pd->wake_lock);
 #endif
 	device_unregister(&pd->dev);
 }

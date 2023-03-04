@@ -21,13 +21,6 @@ config LGE_PM_QNOVO_QNS
 	  It also allows userspace code to read diagnostics of voltage
 	  and current measured during certain phases of the pulses.
 
-config LGE_PM_QNOVO_QNS_V2
-	bool "QNOVO QNS driver V2"
-	default n
-	help
-	  it was derived from LGE_PM_QNOVO_QNS.
-	  it was revised some features. for example, log style & coding style.
-
 config LGE_PM_BRINGUP
 	bool "support LGE PM Bringup"
 	depends on LGE_PM
@@ -41,17 +34,3 @@ config LGE_PM_ACTM
 	default n
 	help
 	  Say Y to using LGE PM ACTM (MASSFIVEG-1578)
-
-config LGE_PM_ACTM_V2
-	bool "LGE Adaptive Charging Thermal Mitigation Engine V2 - minor update"
-	depends on LGE_PM
-	default n
-	help
-	  Say Y here enable support lge actm
-
-config LGE_PM_EXT_QG_V2
-	bool "LGE extension-qg-v2"
-	depends on LGE_PM
-	default n
-	help
-	  Say Y here

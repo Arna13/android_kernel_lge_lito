@@ -18,7 +18,7 @@
         nxp,gpio_sda = <&tlmm 108 0x00>;
         nxp,gpio_scl = <&tlmm 109 0x00>;
         nxp,gpio_ven = <&tlmm 107 0x00>;
-        nxp,gpio_mode = <&tlmm 110 0x00>;
+        nxp,gpio_mode = <&tlmm 46 0x00>;
         nxp,gpio_irq = <&tlmm 34 0x00>;
         nxp,i2c-pull-up = <1>;
         qcom,clk-src = "BBCLK2";

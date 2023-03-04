@@ -99,23 +99,18 @@
 #define GSI_TRB_ADDR_BIT_53_MASK	(1 << 21)
 #define GSI_TRB_ADDR_BIT_55_MASK	(1 << 23)
 
-#define	GSI_GENERAL_CFG_REG(reg)	(QSCRATCH_REG_OFFSET + \
-						reg[GENERAL_CFG_REG])
+#define	GSI_GENERAL_CFG_REG(offset) (QSCRATCH_REG_OFFSET + offset)
 #define	GSI_RESTART_DBL_PNTR_MASK	BIT(20)
 #define	GSI_CLK_EN_MASK			BIT(12)
 #define	BLOCK_GSI_WR_GO_MASK		BIT(1)
 #define	GSI_EN_MASK			BIT(0)
 
-#define GSI_DBL_ADDR_L(reg, n)		(QSCRATCH_REG_OFFSET + \
-						reg[DBL_ADDR_L] + (n*4))
-#define GSI_DBL_ADDR_H(reg, n)		(QSCRATCH_REG_OFFSET + \
-						reg[DBL_ADDR_H] + (n*4))
-#define GSI_RING_BASE_ADDR_L(reg, n)	(QSCRATCH_REG_OFFSET + \
-						reg[RING_BASE_ADDR_L] + (n*4))
-#define GSI_RING_BASE_ADDR_H(reg, n)	(QSCRATCH_REG_OFFSET + \
-						reg[RING_BASE_ADDR_H] + (n*4))
+#define GSI_DBL_ADDR_L(offset, n)	((QSCRATCH_REG_OFFSET + offset) + (n*4))
+#define GSI_DBL_ADDR_H(offset, n)	((QSCRATCH_REG_OFFSET + offset) + (n*4))
+#define GSI_RING_BASE_ADDR_L(offset, n)	((QSCRATCH_REG_OFFSET + offset) + (n*4))
+#define GSI_RING_BASE_ADDR_H(offset, n)	((QSCRATCH_REG_OFFSET + offset) + (n*4))
 
-#define	GSI_IF_STS(reg)			(QSCRATCH_REG_OFFSET + reg[IF_STS])
+#define	GSI_IF_STS(offset)	(QSCRATCH_REG_OFFSET + offset)
 #define	GSI_WR_CTRL_STATE_MASK	BIT(15)
 
 #define DWC3_GEVNTCOUNT_EVNTINTRPTMASK		(1 << 31)
@@ -315,9 +310,7 @@ struct dwc3_msm {
 	bool			in_device_mode;
 	enum usb_device_speed	max_rh_port_speed;
 	unsigned int		tx_fifo_size;
-	bool			check_eud_state;
 	bool			vbus_active;
-	bool			eud_active;
 	bool			suspend;
 	bool			use_pdc_interrupts;
 	enum dwc3_id_state	id_state;
@@ -377,9 +370,6 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 						unsigned int value);
 static int dwc3_usb_blocking_sync(struct notifier_block *nb,
 					unsigned long event, void *ptr);
-#ifdef CONFIG_LGE_USB
-static int get_psy_type(struct dwc3_msm *mdwc);
-#endif
 
 /**
  *
@@ -700,7 +690,6 @@ static int __dwc3_msm_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 	memset(trb, 0, sizeof(*trb));
 
 	req->trb = trb;
-	req->num_trbs++;
 	trb->bph = DBM_TRB_BIT | DBM_TRB_DMA | DBM_TRB_EP_NUM(dep->number);
 	trb->size = DWC3_TRB_SIZE_LENGTH(req->request.length);
 	trb->ctrl = DWC3_TRBCTL_NORMAL | DWC3_TRB_CTRL_HWO |
@@ -713,7 +702,7 @@ static int __dwc3_msm_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 	memset(trb_link, 0, sizeof(*trb_link));
 
 	trb_link->bpl = lower_32_bits(req->trb_dma);
-	trb_link->bph = upper_32_bits(req->trb_dma) | DBM_TRB_BIT |
+	trb_link->bph = DBM_TRB_BIT |
 			DBM_TRB_DMA | DBM_TRB_EP_NUM(dep->number);
 	trb_link->size = 0;
 	trb_link->ctrl = DWC3_TRBCTL_LINK_TRB | DWC3_TRB_CTRL_HWO;
@@ -722,7 +711,7 @@ static int __dwc3_msm_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 	 * Now start the transfer
 	 */
 	memset(&params, 0, sizeof(params));
-	params.param0 = upper_32_bits(req->trb_dma); /* TDAddr High */
+	params.param0 = 0; /* TDAddr High */
 	params.param1 = lower_32_bits(req->trb_dma); /* DAddr Low */
 
 	/* DBM requires IOC to be set */
@@ -783,12 +772,6 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 	 * as soon as possible so we will release back the lock.
 	 */
 	spin_lock_irqsave(&dwc->lock, flags);
-	if (!dwc->pullups_connected) {
-		dev_err(mdwc->dev, "%s: No Pullup\n", __func__);
-		spin_unlock_irqrestore(&dwc->lock, flags);
-		return -ESHUTDOWN;
-	}
-
 	if (!dep->endpoint.desc) {
 		dev_err(mdwc->dev,
 			"%s: trying to queue request %pK to disabled ep %s\n",
@@ -977,8 +960,6 @@ static int gsi_startxfer_for_ep(struct usb_ep *ep)
 
 	memset(&params, 0, sizeof(params));
 	params.param0 = GSI_TRB_ADDR_BIT_53_MASK | GSI_TRB_ADDR_BIT_55_MASK;
-	params.param0 |= upper_32_bits(dwc3_trb_dma_offset(dep,
-						&dep->trb_pool[0]) & 0xffff);
 	params.param0 |= (ep->ep_intr_num << 16);
 	params.param1 = lower_32_bits(dwc3_trb_dma_offset(dep,
 						&dep->trb_pool[0]));
@@ -1008,29 +989,15 @@ static void gsi_store_ringbase_dbl_info(struct usb_ep *ep,
 	struct dwc3_msm *mdwc = dev_get_drvdata(dwc->dev->parent);
 	int n = ep->ep_intr_num - 1;
 
-	dwc3_msm_write_reg(mdwc->base, GSI_RING_BASE_ADDR_L(mdwc->gsi_reg, n),
-		lower_32_bits(dwc3_trb_dma_offset(dep, &dep->trb_pool[0])));
-	dwc3_msm_write_reg(mdwc->base, GSI_RING_BASE_ADDR_H(mdwc->gsi_reg, n),
-		upper_32_bits(dwc3_trb_dma_offset(dep, &dep->trb_pool[0])));
-
-	dev_dbg(mdwc->dev, "Ring Base Addr %d: %x (LSB) %x (MSB)\n", n,
-		lower_32_bits(dwc3_trb_dma_offset(dep, &dep->trb_pool[0])),
-		upper_32_bits(dwc3_trb_dma_offset(dep, &dep->trb_pool[0])));
-
-	if (request->mapped_db_reg_phs_addr_lsb &&
-			dwc->sysdev != request->dev) {
-		dma_unmap_resource(request->dev,
-			request->mapped_db_reg_phs_addr_lsb,
-			PAGE_SIZE, DMA_BIDIRECTIONAL, 0);
-		request->mapped_db_reg_phs_addr_lsb = 0;
-	}
+	dwc3_msm_write_reg(mdwc->base,
+		GSI_RING_BASE_ADDR_L(mdwc->gsi_reg[RING_BASE_ADDR_L], (n)),
+		dwc3_trb_dma_offset(dep, &dep->trb_pool[0]));
 
 	if (!request->mapped_db_reg_phs_addr_lsb) {
 		request->mapped_db_reg_phs_addr_lsb =
 			dma_map_resource(dwc->sysdev,
 				(phys_addr_t)request->db_reg_phs_addr_lsb,
 				PAGE_SIZE, DMA_BIDIRECTIONAL, 0);
-		request->dev = dwc->sysdev;
 		if (dma_mapping_error(dwc->sysdev,
 				request->mapped_db_reg_phs_addr_lsb))
 			dev_err(mdwc->dev, "mapping error for db_reg_phs_addr_lsb\n");
@@ -1048,14 +1015,20 @@ static void gsi_store_ringbase_dbl_info(struct usb_ep *ep,
 	 * Replace dummy doorbell address with real one as IPA connection
 	 * is setup now and GSI must be ready to handle doorbell updates.
 	 */
-	dwc3_msm_write_reg(mdwc->base, GSI_DBL_ADDR_H(mdwc->gsi_reg, n),
-		upper_32_bits(request->mapped_db_reg_phs_addr_lsb));
+	dwc3_msm_write_reg_field(mdwc->base,
+			GSI_DBL_ADDR_H(mdwc->gsi_reg[DBL_ADDR_H], (n)),
+			~0x0, 0x0);
 
-	dwc3_msm_write_reg(mdwc->base, GSI_DBL_ADDR_L(mdwc->gsi_reg, n),
-		lower_32_bits(request->mapped_db_reg_phs_addr_lsb));
-
-	dev_dbg(mdwc->dev, "GSI DB Addr %d: %pa\n", n,
-		&request->mapped_db_reg_phs_addr_lsb);
+	dwc3_msm_write_reg(mdwc->base,
+		GSI_DBL_ADDR_L(mdwc->gsi_reg[DBL_ADDR_L], (n)),
+		(u32)request->mapped_db_reg_phs_addr_lsb);
+	dev_dbg(mdwc->dev, "Ring Base Addr %d: %x (LSB)\n", n,
+		dwc3_msm_read_reg(mdwc->base,
+			GSI_RING_BASE_ADDR_L(mdwc->gsi_reg[RING_BASE_ADDR_L],
+								(n))));
+	dev_dbg(mdwc->dev, "GSI DB Addr %d: %x (LSB)\n", n,
+		dwc3_msm_read_reg(mdwc->base,
+			GSI_DBL_ADDR_L(mdwc->gsi_reg[DBL_ADDR_L], (n))));
 }
 
 /**
@@ -1069,42 +1042,39 @@ static void gsi_ring_db(struct usb_ep *ep, struct usb_gsi_request *request)
 {
 	void __iomem *gsi_dbl_address_lsb;
 	void __iomem *gsi_dbl_address_msb;
-	dma_addr_t trb_dma;
+	dma_addr_t offset;
 	struct dwc3_ep *dep = to_dwc3_ep(ep);
 	struct dwc3	*dwc = dep->dwc;
 	struct dwc3_msm *mdwc = dev_get_drvdata(dwc->dev->parent);
 	int num_trbs = (dep->direction) ? (2 * (request->num_bufs) + 2)
 					: (request->num_bufs + 2);
 
-	gsi_dbl_address_lsb = ioremap_nocache(request->db_reg_phs_addr_lsb,
-				sizeof(u32));
+	gsi_dbl_address_lsb = devm_ioremap_nocache(mdwc->dev,
+				request->db_reg_phs_addr_lsb, sizeof(u32));
 	if (!gsi_dbl_address_lsb) {
-		dev_err(mdwc->dev, "Failed to map GSI DBL address LSB 0x%x\n",
-				request->db_reg_phs_addr_lsb);
+		dev_err(mdwc->dev, "Failed to get GSI DBL address LSB\n");
 		return;
 	}
 
-	gsi_dbl_address_msb = ioremap_nocache(request->db_reg_phs_addr_msb,
-				sizeof(u32));
+	gsi_dbl_address_msb = devm_ioremap_nocache(mdwc->dev,
+			request->db_reg_phs_addr_msb, sizeof(u32));
 	if (!gsi_dbl_address_msb) {
-		dev_err(mdwc->dev, "Failed to map GSI DBL address MSB 0x%x\n",
-				request->db_reg_phs_addr_msb);
-		iounmap(gsi_dbl_address_lsb);
+		dev_err(mdwc->dev, "Failed to get GSI DBL address MSB\n");
 		return;
 	}
 
-	trb_dma = dwc3_trb_dma_offset(dep, &dep->trb_pool[num_trbs-1]);
+	offset = dwc3_trb_dma_offset(dep, &dep->trb_pool[num_trbs-1]);
 	dev_dbg(mdwc->dev, "Writing link TRB addr: %pa to %pK (%x) for ep:%s\n",
-		&trb_dma, gsi_dbl_address_lsb, request->db_reg_phs_addr_lsb,
+		&offset, gsi_dbl_address_lsb, request->db_reg_phs_addr_lsb,
 		ep->name);
 
-	writel_relaxed(lower_32_bits(trb_dma), gsi_dbl_address_lsb);
-	readl_relaxed(gsi_dbl_address_lsb);
-	writel_relaxed(upper_32_bits(trb_dma), gsi_dbl_address_msb);
-	readl_relaxed(gsi_dbl_address_msb);
+	dbg_log_string("ep:%s link TRB addr:%pa db:%x\n",
+		ep->name, &offset, request->db_reg_phs_addr_lsb);
 
-	iounmap(gsi_dbl_address_lsb);
-	iounmap(gsi_dbl_address_msb);
+	writel_relaxed(offset, gsi_dbl_address_lsb);
+	readl_relaxed(gsi_dbl_address_lsb);
+	writel_relaxed(0, gsi_dbl_address_msb);
+	readl_relaxed(gsi_dbl_address_msb);
 }
 
 /**
@@ -1168,7 +1138,6 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 	size_t len;
 	unsigned long dma_attr;
 	dma_addr_t buffer_addr;
-	dma_addr_t trb0_dma;
 	struct dwc3_ep *dep = to_dwc3_ep(ep);
 	struct dwc3		*dwc = dep->dwc;
 	struct dwc3_msm *mdwc = dev_get_drvdata(dwc->dev->parent);
@@ -1189,7 +1158,7 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 	req->buf_base_addr = dma_alloc_attrs(dwc->sysdev, len, &req->dma,
 					GFP_KERNEL, dma_attr);
 	if (!req->buf_base_addr) {
-		dev_err(dwc->dev, "buf_base_addr allocate failed %s\n",
+		dev_err(dwc->dev, "%s: buf_base_addr allocate failed %s\n",
 				dep->name);
 		return -ENOMEM;
 	}
@@ -1210,8 +1179,6 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 				dep->name);
 		goto free_trb_buffer;
 	}
-
-	trb0_dma = dwc3_trb_dma_offset(dep, &dep->trb_pool[0]);
 
 	dep->num_trbs = num_trbs;
 	dma_get_sgtable(dwc->sysdev, &req->sgt_trb_xfer_ring, dep->trb_pool,
@@ -1244,7 +1211,7 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 
 			/* Setup n TRBs pointing to valid buffers */
 			trb->bpl = lower_32_bits(buffer_addr);
-			trb->bph = upper_32_bits(buffer_addr);
+			trb->bph = 0;
 			trb->size = 0;
 			trb->ctrl = DWC3_TRBCTL_NORMAL
 					| DWC3_TRB_CTRL_IOC;
@@ -1252,9 +1219,9 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 
 			/* Set up the Link TRB at the end */
 			if (i == (num_trbs - 1)) {
-				trb->bpl = lower_32_bits(trb0_dma);
-				trb->bph = upper_32_bits(trb0_dma & 0xffff);
-				trb->bph |= (1 << 23) | (1 << 21)
+				trb->bpl = dwc3_trb_dma_offset(dep,
+							&dep->trb_pool[0]);
+				trb->bph = (1 << 23) | (1 << 21)
 						| (ep->ep_intr_num << 16);
 				trb->size = 0;
 				trb->ctrl = DWC3_TRBCTL_LINK_TRB
@@ -1269,22 +1236,19 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 			memset(trb, 0, sizeof(*trb));
 			/* Setup LINK TRB to start with TRB ring */
 			if (i == 0) {
-				trb->bpl =
-					lower_32_bits(trb0_dma + sizeof(*trb));
-				trb->bph =
-					upper_32_bits(trb0_dma + sizeof(*trb));
+				trb->bpl = dwc3_trb_dma_offset(dep,
+							&dep->trb_pool[1]);
 				trb->ctrl = DWC3_TRBCTL_LINK_TRB;
 			} else if (i == (num_trbs - 1)) {
 				/* Set up the Link TRB at the end */
-				trb->bpl = lower_32_bits(trb0_dma);
-				trb->bph = upper_32_bits(trb0_dma & 0xffff);
-				trb->bph |= (1 << 23) | (1 << 21)
+				trb->bpl = dwc3_trb_dma_offset(dep,
+						&dep->trb_pool[0]);
+				trb->bph = (1 << 23) | (1 << 21)
 						| (ep->ep_intr_num << 16);
 				trb->ctrl = DWC3_TRBCTL_LINK_TRB
 						| DWC3_TRB_CTRL_HWO;
 			} else {
 				trb->bpl = lower_32_bits(buffer_addr);
-				trb->bph = upper_32_bits(buffer_addr);
 				trb->size = req->buf_len;
 				buffer_addr += req->buf_len;
 				trb->ctrl = DWC3_TRBCTL_NORMAL
@@ -1375,12 +1339,16 @@ static void gsi_configure_ep(struct usb_ep *ep, struct usb_gsi_request *request)
 	int ret;
 
 	/* setup dummy doorbell as IPA connection isn't setup yet */
-	dwc3_msm_write_reg(mdwc->base, GSI_DBL_ADDR_H(mdwc->gsi_reg, n),
-			upper_32_bits(mdwc->dummy_gsi_db_dma));
-	dwc3_msm_write_reg(mdwc->base, GSI_DBL_ADDR_L(mdwc->gsi_reg, n),
-			lower_32_bits(mdwc->dummy_gsi_db_dma));
-	dev_dbg(mdwc->dev, "Dummy DB Addr %pK: %llx\n",
-		&mdwc->dummy_gsi_db, mdwc->dummy_gsi_db_dma);
+	dwc3_msm_write_reg_field(mdwc->base,
+			GSI_DBL_ADDR_H(mdwc->gsi_reg[DBL_ADDR_H], (n)),
+			~0x0, (u32)((u64)mdwc->dummy_gsi_db_dma >> 32));
+
+	dwc3_msm_write_reg_field(mdwc->base,
+			GSI_DBL_ADDR_L(mdwc->gsi_reg[DBL_ADDR_L], (n)),
+			~0x0, (u32)mdwc->dummy_gsi_db_dma);
+	dev_dbg(mdwc->dev, "Dummy DB Addr %pK: %llx %llx (LSB)\n",
+		&mdwc->dummy_gsi_db, mdwc->dummy_gsi_db_dma,
+		(u32)mdwc->dummy_gsi_db_dma);
 
 	memset(&params, 0x00, sizeof(params));
 
@@ -1459,14 +1427,18 @@ static void gsi_enable(struct usb_ep *ep)
 	struct dwc3 *dwc = dep->dwc;
 	struct dwc3_msm *mdwc = dev_get_drvdata(dwc->dev->parent);
 
-	dwc3_msm_write_reg_field(mdwc->base, GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
+	dwc3_msm_write_reg_field(mdwc->base,
+		GSI_GENERAL_CFG_REG(mdwc->gsi_reg[GENERAL_CFG_REG]),
 		GSI_CLK_EN_MASK, 1);
-	dwc3_msm_write_reg_field(mdwc->base, GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
+	dwc3_msm_write_reg_field(mdwc->base,
+		GSI_GENERAL_CFG_REG(mdwc->gsi_reg[GENERAL_CFG_REG]),
 		GSI_RESTART_DBL_PNTR_MASK, 1);
-	dwc3_msm_write_reg_field(mdwc->base, GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
+	dwc3_msm_write_reg_field(mdwc->base,
+		GSI_GENERAL_CFG_REG(mdwc->gsi_reg[GENERAL_CFG_REG]),
 		GSI_RESTART_DBL_PNTR_MASK, 0);
 	dev_dbg(mdwc->dev, "%s: Enable GSI\n", __func__);
-	dwc3_msm_write_reg_field(mdwc->base, GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
+	dwc3_msm_write_reg_field(mdwc->base,
+		GSI_GENERAL_CFG_REG(mdwc->gsi_reg[GENERAL_CFG_REG]),
 		GSI_EN_MASK, 1);
 }
 
@@ -1486,7 +1458,8 @@ static void gsi_set_clear_dbell(struct usb_ep *ep,
 	struct dwc3_msm *mdwc = dev_get_drvdata(dwc->dev->parent);
 
 	dbg_log_string("block_db(%d)", block_db);
-	dwc3_msm_write_reg_field(mdwc->base, GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
+	dwc3_msm_write_reg_field(mdwc->base,
+		GSI_GENERAL_CFG_REG(mdwc->gsi_reg[GENERAL_CFG_REG]),
 		BLOCK_GSI_WR_GO_MASK, block_db);
 }
 
@@ -1500,7 +1473,7 @@ static bool gsi_check_ready_to_suspend(struct dwc3_msm *mdwc)
 	u32	timeout = 1500;
 
 	while (dwc3_msm_read_reg_field(mdwc->base,
-		GSI_IF_STS(mdwc->gsi_reg), GSI_WR_CTRL_STATE_MASK)) {
+		GSI_IF_STS(mdwc->gsi_reg[IF_STS]), GSI_WR_CTRL_STATE_MASK)) {
 		if (!timeout--) {
 			dev_err(mdwc->dev,
 			"Unable to suspend GSI ch. WR_CTRL_STATE != 0\n");
@@ -1582,11 +1555,6 @@ static int dwc3_msm_gsi_ep_op(struct usb_ep *ep,
 		ret = gsi_get_xfer_index(ep);
 		break;
 	case GSI_EP_OP_STORE_DBL_INFO:
-		if (!dwc->pullups_connected) {
-			dbg_log_string("No Pullup\n");
-			return -ESHUTDOWN;
-		}
-
 		request = (struct usb_gsi_request *)op_data;
 		gsi_store_ringbase_dbl_info(ep, request);
 		break;
@@ -2091,10 +2059,6 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 			dwc->gadget.is_selfpowered = val.intval;
 		else
 			dwc->gadget.is_selfpowered = 0;
-#ifdef CONFIG_LGE_USB
-		if (get_psy_type(mdwc) == POWER_SUPPLY_TYPE_USB_PD)
-			dwc->gadget.is_selfpowered = 1;
-#endif
 		break;
 	case DWC3_CONTROLLER_NOTIFY_OTG_EVENT:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_NOTIFY_OTG_EVENT received\n");
@@ -2136,7 +2100,6 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 			dwc3_writel(dwc->regs, DWC3_GEVNTADRLO((i+1)),
 				lower_32_bits(evt->dma));
 			dwc3_writel(dwc->regs, DWC3_GEVNTADRHI((i+1)),
-				(upper_32_bits(evt->dma) & 0xffff) |
 				DWC3_GEVNTADRHI_EVNTADRHI_GSI_EN(
 				DWC3_GEVENT_TYPE_GSI) |
 				DWC3_GEVNTADRHI_EVNTADRHI_GSI_IDX((i+1)));
@@ -2200,15 +2163,9 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 		break;
 	case DWC3_CONTROLLER_NOTIFY_CLEAR_DB:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_NOTIFY_CLEAR_DB\n");
-		if (!mdwc->gsi_ev_buff)
-			break;
-
 		dwc3_msm_write_reg_field(mdwc->base,
-			GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
+			GSI_GENERAL_CFG_REG(mdwc->gsi_reg[GENERAL_CFG_REG]),
 			BLOCK_GSI_WR_GO_MASK, true);
-		dwc3_msm_write_reg_field(mdwc->base,
-			GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
-			GSI_EN_MASK, 0);
 		break;
 	default:
 		dev_dbg(mdwc->dev, "unknown dwc3 event\n");
@@ -2892,13 +2849,8 @@ static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 	}
 
 	if (mdwc->vbus_active && !mdwc->in_restart) {
-		if (mdwc->hs_phy->flags & EUD_SPOOF_DISCONNECT) {
-			dev_dbg(mdwc->dev, "XCVR:EUD: BSV clear\n");
-			clear_bit(B_SESS_VLD, &mdwc->inputs);
-		} else {
-			dev_dbg(mdwc->dev, "XCVR: BSV set\n");
-			set_bit(B_SESS_VLD, &mdwc->inputs);
-		}
+		dev_dbg(mdwc->dev, "XCVR: BSV set\n");
+		set_bit(B_SESS_VLD, &mdwc->inputs);
 	} else {
 		dev_dbg(mdwc->dev, "XCVR: BSV clear\n");
 		clear_bit(B_SESS_VLD, &mdwc->inputs);
@@ -2912,39 +2864,6 @@ static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 		clear_bit(B_SUSPEND, &mdwc->inputs);
 	}
 
-	if (mdwc->check_eud_state) {
-		mdwc->hs_phy->flags &=
-			~(EUD_SPOOF_CONNECT | EUD_SPOOF_DISCONNECT);
-		dev_dbg(mdwc->dev, "eud: state:%d active:%d hs_phy_flags:0x%x\n",
-			mdwc->check_eud_state, mdwc->eud_active,
-			mdwc->hs_phy->flags);
-		if (mdwc->eud_active) {
-			mdwc->hs_phy->flags |= EUD_SPOOF_CONNECT;
-			dev_dbg(mdwc->dev, "EUD: XCVR: BSV set\n");
-			set_bit(B_SESS_VLD, &mdwc->inputs);
-		} else {
-			mdwc->hs_phy->flags |= EUD_SPOOF_DISCONNECT;
-			dev_dbg(mdwc->dev, "EUD: XCVR: BSV clear\n");
-			clear_bit(B_SESS_VLD, &mdwc->inputs);
-		}
-
-		mdwc->check_eud_state = false;
-	}
-
-
-	dev_dbg(mdwc->dev, "eud: state:%d active:%d hs_phy_flags:0x%x\n",
-		mdwc->check_eud_state, mdwc->eud_active, mdwc->hs_phy->flags);
-
-	/* handle case of USB cable disconnect after USB spoof disconnect */
-	if (!mdwc->vbus_active &&
-			(mdwc->hs_phy->flags & EUD_SPOOF_DISCONNECT)) {
-		mdwc->hs_phy->flags &= ~EUD_SPOOF_DISCONNECT;
-		mdwc->hs_phy->flags |= PHY_SUS_OVERRIDE;
-		usb_phy_set_suspend(mdwc->hs_phy, 1);
-		mdwc->hs_phy->flags &= ~PHY_SUS_OVERRIDE;
-		return;
-	}
-
 	queue_delayed_work(mdwc->sm_usb_wq, &mdwc->sm_work, 0);
 }
 
@@ -2955,12 +2874,10 @@ static void dwc3_resume_work(struct work_struct *w)
 	union extcon_property_value val;
 	unsigned int extcon_id;
 	struct extcon_dev *edev = NULL;
-	const char *edev_name;
-	char *eud_str;
-	bool eud_connected = false;
 	int ret = 0;
 
 	dev_dbg(mdwc->dev, "%s: dwc3 resume work\n", __func__);
+
 	if (mdwc->extcon && mdwc->vbus_active && !mdwc->in_restart) {
 		extcon_id = EXTCON_USB;
 		edev = mdwc->extcon[mdwc->ext_idx].edev;
@@ -2969,17 +2886,8 @@ static void dwc3_resume_work(struct work_struct *w)
 		edev = mdwc->extcon[mdwc->ext_idx].edev;
 	}
 
-	if (edev) {
-		edev_name = extcon_get_edev_name(edev);
-		dbg_log_string("edev:%s\n", edev_name);
-		/* Skip querying speed and cc_state for EUD edev */
-		eud_str = strnstr(edev_name, "eud", strlen(edev_name));
-		if (eud_str)
-			eud_connected = true;
-	}
-
 	/* Check speed and Type-C polarity values in order to configure PHY */
-	if (!eud_connected && edev && extcon_get_state(edev, extcon_id)) {
+	if (edev && extcon_get_state(edev, extcon_id)) {
 #ifdef CONFIG_LGE_DUAL_SCREEN
 		if (check_ds_connect_state() >= DS_STATE_DP_CONNECTED) {
 			dev_info(mdwc->dev, "%s: DS is working "
@@ -2991,15 +2899,12 @@ static void dwc3_resume_work(struct work_struct *w)
 		}
 #endif
 		dwc->maximum_speed = dwc->max_hw_supp_speed;
-		dwc->gadget.max_speed = dwc->maximum_speed;
 
 		ret = extcon_get_property(edev, extcon_id,
 				EXTCON_PROP_USB_SS, &val);
 
-		if (!ret && val.intval == 0) {
+		if (!ret && val.intval == 0)
 			dwc->maximum_speed = USB_SPEED_HIGH;
-			dwc->gadget.max_speed = dwc->maximum_speed;
-		}
 
 		if (mdwc->override_usb_speed &&
 			mdwc->override_usb_speed <= dwc->maximum_speed) {
@@ -3007,7 +2912,6 @@ static void dwc3_resume_work(struct work_struct *w)
 			dwc->gadget.max_speed = dwc->maximum_speed;
 			dbg_event(0xFF, "override_speed",
 					mdwc->override_usb_speed);
-			mdwc->override_usb_speed = 0;
 		}
 
 		dbg_event(0xFF, "speed", dwc->maximum_speed);
@@ -3028,10 +2932,6 @@ static void dwc3_resume_work(struct work_struct *w)
 			dwc->gadget.is_selfpowered = val.intval;
 		else
 			dwc->gadget.is_selfpowered = 0;
-#ifdef CONFIG_LGE_USB
-		if (get_psy_type(mdwc) == POWER_SUPPLY_TYPE_USB_PD)
-			dwc->gadget.is_selfpowered = 1;
-#endif
 	}
 
 	/*
@@ -3356,8 +3256,6 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 	struct extcon_dev *edev = ptr;
 	struct extcon_nb *enb = container_of(nb, struct extcon_nb, vbus_nb);
 	struct dwc3_msm *mdwc = enb->mdwc;
-	char *eud_str;
-	const char *edev_name;
 
 	if (!edev || !mdwc)
 		return NOTIFY_DONE;
@@ -3365,29 +3263,18 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 	dwc = platform_get_drvdata(mdwc->dwc3);
 
 	dbg_event(0xFF, "extcon idx", enb->idx);
+
+	if (mdwc->vbus_active == event)
+		return NOTIFY_DONE;
+
+	mdwc->ext_idx = enb->idx;
+
 	dev_dbg(mdwc->dev, "vbus:%ld event received\n", event);
-	edev_name = extcon_get_edev_name(edev);
-	dbg_log_string("edev:%s\n", edev_name);
 
-	/* detect USB spoof disconnect/connect notification with EUD device */
-	eud_str = strnstr(edev_name, "eud", strlen(edev_name));
-	if (eud_str) {
-		if (mdwc->eud_active == event)
-			return NOTIFY_DONE;
-		mdwc->eud_active = event;
-		mdwc->check_eud_state = true;
-	} else {
-		if (mdwc->vbus_active == event)
-			return NOTIFY_DONE;
-		mdwc->vbus_active = event;
-	}
+	mdwc->vbus_active = event;
 
-	/*
-	 * Drive a pulse on DP to ensure proper CDP detection
-	 * and only when the vbus connect event is a valid one.
-	 */
 	if (get_psy_type(mdwc) == POWER_SUPPLY_TYPE_USB_CDP &&
-			mdwc->vbus_active && !mdwc->check_eud_state) {
+			mdwc->vbus_active) {
 		dev_dbg(mdwc->dev, "Connected to CDP, pull DP up\n");
 		usb_phy_drive_dp_pulse(mdwc->hs_phy, DP_PULSE_WIDTH_MSEC);
 	}
@@ -4186,10 +4073,10 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 
 	if (mdwc->hs_phy)
 		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
-	dbg_event(0xFF, "Remov put", 0);
 	platform_device_put(mdwc->dwc3);
 	of_platform_depopulate(&pdev->dev);
 
+	dbg_event(0xFF, "Remov put", 0);
 	pm_runtime_disable(mdwc->dev);
 	pm_runtime_barrier(mdwc->dev);
 	pm_runtime_put_sync(mdwc->dev);

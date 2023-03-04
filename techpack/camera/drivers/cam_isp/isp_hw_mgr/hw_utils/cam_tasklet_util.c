@@ -199,12 +199,9 @@ void cam_tasklet_enqueue_cmd(
 		return;
 	}
 
-	/* LGE_CHANGE, To fix the infiniteq loop due to unsynchronized tasklet_active 2020-04-24 camera-stability@lge.com */
-	spin_lock_irqsave(&tasklet->tasklet_lock, flags);
 	if (!atomic_read(&tasklet->tasklet_active)) {
 		CAM_ERR_RATE_LIMIT(CAM_ISP, "Tasklet is not active idx:%d",
 			tasklet->index);
-		spin_unlock_irqrestore(&tasklet->tasklet_lock, flags);
 		return;
 	}
 
@@ -212,11 +209,11 @@ void cam_tasklet_enqueue_cmd(
 	tasklet_cmd->bottom_half_handler = bottom_half_handler;
 	tasklet_cmd->payload = evt_payload_priv;
 	tasklet_cmd->handler_priv = handler_priv;
+	spin_lock_irqsave(&tasklet->tasklet_lock, flags);
 	list_add_tail(&tasklet_cmd->list,
 		&tasklet->used_cmd_list);
-	tasklet_hi_schedule(&tasklet->tasklet);
-	/* LGE_CHANGE, To fix the infinite loop due to unsynchronized tasklet_active 2020-04-24 camera-stability@lge.com */
 	spin_unlock_irqrestore(&tasklet->tasklet_lock, flags);
+	tasklet_hi_schedule(&tasklet->tasklet);
 }
 
 int cam_tasklet_init(
@@ -277,13 +274,10 @@ int cam_tasklet_start(void  *tasklet_info)
 {
 	struct cam_tasklet_info       *tasklet = tasklet_info;
 	int i = 0;
-	unsigned long                  flags;
-	/* LGE_CHANGE, To fix the infinite loop due to unsynchronized tasklet_active 2020-04-24 camera-stability@lge.com */
-	spin_lock_irqsave(&tasklet->tasklet_lock, flags);
+
 	if (atomic_read(&tasklet->tasklet_active)) {
 		CAM_ERR(CAM_ISP, "Tasklet already active idx:%d",
 			tasklet->index);
-		spin_unlock_irqrestore(&tasklet->tasklet_lock, flags);
 		return -EBUSY;
 	}
 
@@ -297,26 +291,18 @@ int cam_tasklet_start(void  *tasklet_info)
 	atomic_set(&tasklet->tasklet_active, 1);
 
 	tasklet_enable(&tasklet->tasklet);
-	/* LGE_CHANGE, To fix the infinite loop due to unsynchronized tasklet_active 2020-04-24 camera-stability@lge.com */
-	spin_unlock_irqrestore(&tasklet->tasklet_lock, flags);
+
 	return 0;
 }
 
 void cam_tasklet_stop(void  *tasklet_info)
 {
 	struct cam_tasklet_info  *tasklet = tasklet_info;
-	unsigned long                  flags;
 
-	/* LGE_CHANGE, To fix the infinite loop due to unsynchronized tasklet_active 2020-04-24 camera-stability@lge.com */
-	spin_lock_irqsave(&tasklet->tasklet_lock, flags);
-	if (!atomic_read(&tasklet->tasklet_active)){
-		spin_unlock_irqrestore(&tasklet->tasklet_lock, flags);
+	if (!atomic_read(&tasklet->tasklet_active))
 		return;
-	}
-	atomic_set(&tasklet->tasklet_active, 0);
-	/* LGE_CHANGE, To fix the infinite loop due to unsynchronized tasklet_active 2020-04-24 camera-stability@lge.com */
-	spin_unlock_irqrestore(&tasklet->tasklet_lock, flags);
 
+	atomic_set(&tasklet->tasklet_active, 0);
 	tasklet_kill(&tasklet->tasklet);
 	tasklet_disable(&tasklet->tasklet);
 	cam_tasklet_flush(tasklet);

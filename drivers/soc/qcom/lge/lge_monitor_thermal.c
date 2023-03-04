@@ -52,16 +52,6 @@ struct lge_monitor_thermal_data {
 	unsigned int last_quiet_temp;
 	unsigned int last_vts_temp;
 
-// For mmW START
-	unsigned int last_qtm_n_temp;
-	unsigned int last_qtm_e_temp;
-	unsigned int last_qtm_w_temp;
-	unsigned int last_qtm0_vts_temp;
-	unsigned int last_qtm1_vts_temp;
-	unsigned int last_qtm2_vts_temp;
-	unsigned int last_qtm_modem_vts_temp;
-// For mmW END
-
 	int last_batt_temp;
 	int last_batt_current;
 	int last_batt_voltage;
@@ -73,17 +63,6 @@ struct lge_monitor_thermal_data {
 	struct thermal_zone_device *tz_pa3;
 	struct thermal_zone_device *tz_quiet;
 	struct thermal_zone_device *tz_vts;
-
-// For mmW START
-	struct thermal_zone_device *tz_qtm_n;
-	struct thermal_zone_device *tz_qtm_e;
-	struct thermal_zone_device *tz_qtm_w;
-	struct thermal_zone_device *tz_qtm0_vts;
-	struct thermal_zone_device *tz_qtm1_vts;
-	struct thermal_zone_device *tz_qtm2_vts;
-	struct thermal_zone_device *tz_qtm_modem_vts;
-// For mmW END
-
 	struct delayed_work init_monitor_work_struct;
 	struct delayed_work monitor_work_struct;
 	struct power_supply     *batt_psy;
@@ -97,19 +76,6 @@ static int enable = 1;
 module_param(enable, int, 0);
 
 static int forced_vts_set = 0;
-
-// For mmW START
-static int forced_qtm_n_set = 0;
-static int forced_qtm_e_set = 0;
-static int forced_qtm_w_set = 0;
-static int forced_qtm0_vts_set = 0;
-static int forced_qtm1_vts_set = 0;
-static int forced_qtm2_vts_set = 0;
-static int forced_qtm_modem_vts_set = 0;
-#ifdef CONFIG_LGE_ONE_BINARY_SKU
-static enum lge_sku_carrier_type sku_carrier = HW_SKU_MAX;
-#endif
-// For mmW END
 
 static void poll_monitor_work(struct work_struct *work);
 static void init_monitor_work(struct work_struct *work);
@@ -141,31 +107,6 @@ static void get_tz_devs(struct lge_monitor_thermal_data *monitor_dd)
 	monitor_dd->tz_quiet = thermal_zone_get_zone_by_name("quiet-therm-usr");
 	monitor_dd->tz_vts = thermal_zone_get_zone_by_name("vts-virt-therm");
 }
-
-// For mmW START
-static void get_modem_tz_devs(struct lge_monitor_thermal_data *monitor_dd)
-{
-	if (!monitor_dd ||
-		(monitor_dd->tz_qtm_n &&
-		monitor_dd->tz_qtm_e &&
-		monitor_dd->tz_qtm_w &&
-		monitor_dd->tz_qtm0_vts &&
-		monitor_dd->tz_qtm1_vts &&
-		monitor_dd->tz_qtm2_vts &&
-		monitor_dd->tz_qtm_modem_vts)) {
-		return;
-	}
-
-	/* mmW thermal zone*/
-	monitor_dd->tz_qtm_n = thermal_zone_get_zone_by_name("qtm-n-therm-usr");
-	monitor_dd->tz_qtm_e = thermal_zone_get_zone_by_name("qtm-e-therm-usr");
-	monitor_dd->tz_qtm_w = thermal_zone_get_zone_by_name("qtm-w-therm-usr");
-	monitor_dd->tz_qtm0_vts = thermal_zone_get_zone_by_name("qtm-0-vts-therm");
-	monitor_dd->tz_qtm1_vts = thermal_zone_get_zone_by_name("qtm-1-vts-therm");
-	monitor_dd->tz_qtm2_vts = thermal_zone_get_zone_by_name("qtm-2-vts-therm");
-	monitor_dd->tz_qtm_modem_vts = thermal_zone_get_zone_by_name("qtm-modem-vts-therm");
-}
-// For mmW END
 
 static ssize_t lge_vts_temp_get(struct device *dev,
                                 struct device_attribute *attr, char *buf)
@@ -205,284 +146,6 @@ static ssize_t lge_vts_temp_set(struct device *dev,
 
 static DEVICE_ATTR(vts_temp, S_IRUGO|S_IWUSR,
                    lge_vts_temp_get, lge_vts_temp_set);
-
-// For mmW START
-static ssize_t lge_qtm_n_temp_get(struct device *dev,
-                                struct device_attribute *attr, char *buf)
-{
-	int ret;
-	int qtm_n_temp, init_temp = 250;
-
-	struct lge_monitor_thermal_data *monitor_dd = dev_get_drvdata(dev);
-
-	if (!monitor_dd || !monitor_dd->tz_qtm_n) {
-		return snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-	}
-
-	if (forced_qtm_n_set)
-		return snprintf(buf, PAGE_SIZE, "%d\n", forced_qtm_n_set);
-
-	ret = thermal_zone_get_temp(monitor_dd->tz_qtm_n, &qtm_n_temp);
-	if (ret)
-		snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-
-	qtm_n_temp = qtm_n_temp / 100;
-	return snprintf(buf, PAGE_SIZE, "%d\n", qtm_n_temp);
-}
-
-static ssize_t lge_qtm_n_temp_set(struct device *dev,
-                                struct device_attribute *attr,
-                                const char *buf, size_t count)
-{
-	int val;
-	if (kstrtoint(buf, 10, &val))
-		return -EINVAL;
-
-	forced_qtm_n_set = val;
-
-	return count;
-}
-
-static DEVICE_ATTR(qtm_n_temp, S_IRUGO|S_IWUSR,
-                   lge_qtm_n_temp_get, lge_qtm_n_temp_set);
-
-static ssize_t lge_qtm_e_temp_get(struct device *dev,
-                                struct device_attribute *attr, char *buf)
-{
-	int ret;
-	int qtm_e_temp, init_temp = 250;
-
-	struct lge_monitor_thermal_data *monitor_dd = dev_get_drvdata(dev);
-
-	if (!monitor_dd || !monitor_dd->tz_qtm_e) {
-		return snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-	}
-
-	if (forced_qtm_e_set)
-		return snprintf(buf, PAGE_SIZE, "%d\n", forced_qtm_e_set);
-
-	ret = thermal_zone_get_temp(monitor_dd->tz_qtm_e, &qtm_e_temp);
-	if (ret)
-		snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-
-	qtm_e_temp = qtm_e_temp / 100;
-	return snprintf(buf, PAGE_SIZE, "%d\n", qtm_e_temp);
-}
-
-static ssize_t lge_qtm_e_temp_set(struct device *dev,
-                                struct device_attribute *attr,
-                                const char *buf, size_t count)
-{
-	int val;
-	if (kstrtoint(buf, 10, &val))
-		return -EINVAL;
-
-	forced_qtm_e_set = val;
-
-	return count;
-}
-
-static DEVICE_ATTR(qtm_e_temp, S_IRUGO|S_IWUSR,
-                   lge_qtm_e_temp_get, lge_qtm_e_temp_set);
-
-static ssize_t lge_qtm_w_temp_get(struct device *dev,
-                                struct device_attribute *attr, char *buf)
-{
-	int ret;
-	int qtm_w_temp, init_temp = 250;
-
-	struct lge_monitor_thermal_data *monitor_dd = dev_get_drvdata(dev);
-
-	if (!monitor_dd || !monitor_dd->tz_qtm_w) {
-		return snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-	}
-
-	if (forced_qtm_w_set)
-		return snprintf(buf, PAGE_SIZE, "%d\n", forced_qtm_w_set);
-
-	ret = thermal_zone_get_temp(monitor_dd->tz_qtm_w, &qtm_w_temp);
-	if (ret)
-		snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-
-	qtm_w_temp = qtm_w_temp / 100;
-	return snprintf(buf, PAGE_SIZE, "%d\n", qtm_w_temp);
-}
-
-static ssize_t lge_qtm_w_temp_set(struct device *dev,
-                                struct device_attribute *attr,
-                                const char *buf, size_t count)
-{
-	int val;
-	if (kstrtoint(buf, 10, &val))
-		return -EINVAL;
-
-	forced_qtm_w_set = val;
-
-	return count;
-}
-
-static DEVICE_ATTR(qtm_w_temp, S_IRUGO|S_IWUSR,
-                   lge_qtm_w_temp_get, lge_qtm_w_temp_set);
-
-static ssize_t lge_qtm0_vts_temp_get(struct device *dev,
-                                struct device_attribute *attr, char *buf)
-{
-	int ret;
-	int mod_temp, init_temp = 250;
-
-	struct lge_monitor_thermal_data *monitor_dd = dev_get_drvdata(dev);
-
-	if (!monitor_dd || !monitor_dd->tz_qtm0_vts) {
-		return snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-	}
-
-	if (forced_qtm0_vts_set)
-		return snprintf(buf, PAGE_SIZE, "%d\n", forced_qtm0_vts_set);
-
-	ret = thermal_zone_get_temp(monitor_dd->tz_qtm0_vts, &mod_temp);
-	if (ret)
-		snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-
-	mod_temp = mod_temp / 100;
-	return snprintf(buf, PAGE_SIZE, "%d\n", mod_temp);
-}
-
-static ssize_t lge_qtm0_vts_temp_set(struct device *dev,
-                                struct device_attribute *attr,
-                                const char *buf, size_t count)
-{
-	int val;
-	if (kstrtoint(buf, 10, &val))
-		return -EINVAL;
-
-	forced_qtm0_vts_set = val;
-
-	return count;
-}
-
-static DEVICE_ATTR(qtm0_vts, S_IRUGO|S_IWUSR,
-                   lge_qtm0_vts_temp_get, lge_qtm0_vts_temp_set);
-
-static ssize_t lge_qtm1_vts_temp_get(struct device *dev,
-                                struct device_attribute *attr, char *buf)
-{
-	int ret;
-	int mod_temp, init_temp = 250;
-
-	struct lge_monitor_thermal_data *monitor_dd = dev_get_drvdata(dev);
-
-	if (!monitor_dd || !monitor_dd->tz_qtm1_vts) {
-		return snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-	}
-
-	if (forced_qtm1_vts_set)
-		return snprintf(buf, PAGE_SIZE, "%d\n", forced_qtm1_vts_set);
-
-	ret = thermal_zone_get_temp(monitor_dd->tz_qtm1_vts, &mod_temp);
-	if (ret)
-		snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-
-	mod_temp = mod_temp / 100;
-	return snprintf(buf, PAGE_SIZE, "%d\n", mod_temp);
-}
-
-static ssize_t lge_qtm1_vts_temp_set(struct device *dev,
-                                struct device_attribute *attr,
-                                const char *buf, size_t count)
-{
-	int val;
-	if (kstrtoint(buf, 10, &val))
-		return -EINVAL;
-
-	forced_qtm1_vts_set = val;
-
-	return count;
-}
-
-static DEVICE_ATTR(qtm1_vts, S_IRUGO|S_IWUSR,
-                   lge_qtm1_vts_temp_get, lge_qtm1_vts_temp_set);
-
-
-static ssize_t lge_qtm2_vts_temp_get(struct device *dev,
-                                struct device_attribute *attr, char *buf)
-{
-	int ret;
-	int mod_temp, init_temp = 250;
-
-	struct lge_monitor_thermal_data *monitor_dd = dev_get_drvdata(dev);
-
-	if (!monitor_dd || !monitor_dd->tz_qtm2_vts) {
-		return snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-	}
-
-	if (forced_qtm2_vts_set)
-		return snprintf(buf, PAGE_SIZE, "%d\n", forced_qtm2_vts_set);
-
-	ret = thermal_zone_get_temp(monitor_dd->tz_qtm2_vts, &mod_temp);
-	if (ret)
-		snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-
-	mod_temp = mod_temp / 100;
-	return snprintf(buf, PAGE_SIZE, "%d\n", mod_temp);
-}
-
-static ssize_t lge_qtm2_vts_temp_set(struct device *dev,
-                                struct device_attribute *attr,
-                                const char *buf, size_t count)
-{
-	int val;
-	if (kstrtoint(buf, 10, &val))
-		return -EINVAL;
-
-	forced_qtm2_vts_set = val;
-
-	return count;
-}
-
-static DEVICE_ATTR(qtm2_vts, S_IRUGO|S_IWUSR,
-                   lge_qtm2_vts_temp_get, lge_qtm2_vts_temp_set);
-
-
-static ssize_t lge_qtm_modem_vts_temp_get(struct device *dev,
-                                struct device_attribute *attr, char *buf)
-{
-	int ret;
-	int mod_temp, init_temp = 250;
-
-	struct lge_monitor_thermal_data *monitor_dd = dev_get_drvdata(dev);
-
-	if (!monitor_dd || !monitor_dd->tz_qtm_modem_vts) {
-		return snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-	}
-
-	if (forced_qtm_modem_vts_set)
-		return snprintf(buf, PAGE_SIZE, "%d\n", forced_qtm_modem_vts_set);
-
-	ret = thermal_zone_get_temp(monitor_dd->tz_qtm_modem_vts, &mod_temp);
-	if (ret)
-		snprintf(buf, PAGE_SIZE, "%d\n", init_temp);
-
-	mod_temp = mod_temp / 100;
-	return snprintf(buf, PAGE_SIZE, "%d\n", mod_temp);
-}
-
-static ssize_t lge_qtm_modem_vts_temp_set(struct device *dev,
-                                struct device_attribute *attr,
-                                const char *buf, size_t count)
-{
-	int val;
-	if (kstrtoint(buf, 10, &val))
-		return -EINVAL;
-
-	forced_qtm_modem_vts_set = val;
-
-	return count;
-}
-
-static DEVICE_ATTR(qtm_modem_vts, S_IRUGO|S_IWUSR,
-                   lge_qtm_modem_vts_temp_get, lge_qtm_modem_vts_temp_set);
-
-// For mmW END
 
 static ssize_t lge_monitor_disable_get(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -550,33 +213,6 @@ static void _poll_monitor(struct lge_monitor_thermal_data *monitor_dd)
 				&monitor_dd->last_vts_temp);
 	}
 
-// For mmW START
-#ifdef CONFIG_LGE_ONE_BINARY_SKU
-	if (sku_carrier == HW_SKU_NA_CDMA_VZW) {
-		get_modem_tz_devs(monitor_dd);
-		if (monitor_dd->tz_qtm_n && monitor_dd->tz_qtm_e &&
-			monitor_dd->tz_qtm_w && monitor_dd->tz_qtm0_vts &&
-			monitor_dd->tz_qtm1_vts && monitor_dd->tz_qtm2_vts &&
-			monitor_dd->tz_qtm_modem_vts) {
-			thermal_zone_get_temp(monitor_dd->tz_qtm_n,
-					&monitor_dd->last_qtm_n_temp);
-			thermal_zone_get_temp(monitor_dd->tz_qtm_e,
-					&monitor_dd->last_qtm_e_temp);
-			thermal_zone_get_temp(monitor_dd->tz_qtm_w,
-					&monitor_dd->last_qtm_w_temp);
-			thermal_zone_get_temp(monitor_dd->tz_qtm0_vts,
-					&monitor_dd->last_qtm0_vts_temp);
-			thermal_zone_get_temp(monitor_dd->tz_qtm1_vts,
-					&monitor_dd->last_qtm1_vts_temp);
-			thermal_zone_get_temp(monitor_dd->tz_qtm2_vts,
-					&monitor_dd->last_qtm2_vts_temp);
-			thermal_zone_get_temp(monitor_dd->tz_qtm_modem_vts,
-					&monitor_dd->last_qtm_modem_vts_temp);
-		}
-	}
-#endif
-// For mmW END
-
 	if (!monitor_dd->batt_psy) {
 		monitor_dd->batt_psy = power_supply_get_by_name("battery");
 		if (!monitor_dd->batt_psy) {
@@ -624,23 +260,6 @@ static void _poll_monitor(struct lge_monitor_thermal_data *monitor_dd)
 			monitor_dd->last_pa3_temp/1000,
 			monitor_dd->last_quiet_temp/1000,
 			monitor_dd->last_vts_temp/1000);
-
-// For mmW START
-#ifdef CONFIG_LGE_ONE_BINARY_SKU
-	if (sku_carrier == HW_SKU_NA_CDMA_VZW) {
-		pr_info("[TM][M] VTS:%3d, QTM0_VTS:%3d, QTM1_VTS:%3d, QTM2_VTS:%3d, QTM_MODEM_VTS:%3d,"
-				" QTM_E:%3d, QTM_W:%3d, QTM_N:%3d\n",
-				monitor_dd->last_vts_temp/1000,
-				monitor_dd->last_qtm0_vts_temp/1000,
-				monitor_dd->last_qtm1_vts_temp/1000,
-				monitor_dd->last_qtm2_vts_temp/1000,
-				monitor_dd->last_qtm_modem_vts_temp/1000,
-				monitor_dd->last_qtm_e_temp/1000,
-				monitor_dd->last_qtm_w_temp/1000,
-				monitor_dd->last_qtm_n_temp/1000);
-	}
-#endif
-// For mmW END
 
 	pr_info("[TM][B] BAT_TEMP:%d, IBAT:%d, BAT_VOL:%d, SOC:%d\n",
 			monitor_dd->last_batt_temp/10,
@@ -713,20 +332,6 @@ static int lge_monitor_thermal_remove(struct platform_device *pdev)
 	device_remove_file(monitor_dd->dev, &dev_attr_disable);
 	device_remove_file(monitor_dd->dev, &dev_attr_vts_temp);
 
-// For mmW START
-#ifdef CONFIG_LGE_ONE_BINARY_SKU
-	if (sku_carrier == HW_SKU_NA_CDMA_VZW) {
-		device_remove_file(monitor_dd->dev, &dev_attr_qtm_n_temp);
-		device_remove_file(monitor_dd->dev, &dev_attr_qtm_e_temp);
-		device_remove_file(monitor_dd->dev, &dev_attr_qtm_w_temp);
-		device_remove_file(monitor_dd->dev, &dev_attr_qtm0_vts);
-		device_remove_file(monitor_dd->dev, &dev_attr_qtm1_vts);
-		device_remove_file(monitor_dd->dev, &dev_attr_qtm2_vts);
-		device_remove_file(monitor_dd->dev, &dev_attr_qtm_modem_vts);
-	}
-#endif
-// For mmW END
-
 	destroy_workqueue(monitor_wq);
 	kfree(monitor_dd);
 	return 0;
@@ -753,41 +358,6 @@ static void init_monitor_work(struct work_struct *work)
 	error = device_create_file(monitor_dd->dev, &dev_attr_vts_temp);
 	if (error)
 		dev_err(monitor_dd->dev, "cannot create vts_temp sysfs attribute\n");
-
-// For mmW START
-#ifdef CONFIG_LGE_ONE_BINARY_SKU
-	sku_carrier = lge_get_sku_carrier();
-	if (sku_carrier == HW_SKU_NA_CDMA_VZW) {
-		error = device_create_file(monitor_dd->dev, &dev_attr_qtm_n_temp);
-		if (error)
-			dev_err(monitor_dd->dev, "cannot create qtm_n_temp sysfs attribute\n");
-
-		error = device_create_file(monitor_dd->dev, &dev_attr_qtm_e_temp);
-		if (error)
-			dev_err(monitor_dd->dev, "cannot create qtm_e_temp sysfs attribute\n");
-
-		error = device_create_file(monitor_dd->dev, &dev_attr_qtm_w_temp);
-		if (error)
-			dev_err(monitor_dd->dev, "cannot create qtm_w_temp sysfs attribute\n");
-
-		error = device_create_file(monitor_dd->dev, &dev_attr_qtm0_vts);
-		if (error)
-			dev_err(monitor_dd->dev, "cannot create qtm0_vts sysfs attribute\n");
-
-		error = device_create_file(monitor_dd->dev, &dev_attr_qtm1_vts);
-		if (error)
-			dev_err(monitor_dd->dev, "cannot create qtm1_vts sysfs attribute\n");
-
-		error = device_create_file(monitor_dd->dev, &dev_attr_qtm2_vts);
-		if (error)
-			dev_err(monitor_dd->dev, "cannot create qtm2_vts sysfs attribute\n");
-
-		error = device_create_file(monitor_dd->dev, &dev_attr_qtm_modem_vts);
-		if (error)
-			dev_err(monitor_dd->dev, "cannot create qtm_modem_vts sysfs attribute\n");
-	}
-#endif
-// For mmW END
 
 	dev_info(monitor_dd->dev, "LGE monitor thermal Initialized\n");
 
@@ -841,8 +411,6 @@ static int lge_monitor_thermal_probe(struct platform_device *pdev)
 	int ret;
 	struct lge_monitor_thermal_data *monitor_dd;
 
-	pr_info("thermal monitor probe start\n");
-
 	monitor_wq = alloc_workqueue("monitor-thermal", WQ_FREEZABLE, 0);
 	if (!monitor_wq) {
 		pr_err("Failed to allocate monitor workqueue\n");
@@ -867,7 +435,6 @@ static int lge_monitor_thermal_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&monitor_dd->monitor_work_struct, poll_monitor_work);
 	queue_delayed_work(monitor_wq,
 		&monitor_dd->init_monitor_work_struct, 0);
-	pr_info("thermal monitor probe done\n");
 
 	return 0;
 err:

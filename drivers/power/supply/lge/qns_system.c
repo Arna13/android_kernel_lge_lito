@@ -36,10 +36,10 @@ struct qns_data
 	struct alarm alarm;
 	bool alarm_inited;
 	int alarm_value;
-	struct wakeup_source *wakelock;
+	struct wakeup_source wakelock;
 	bool wakelock_inited;
 	bool wakelock_held;
-	struct wakeup_source *charge_wakelock;
+	struct wakeup_source charge_wakelock;
 	bool charge_wakelock_inited;
 	bool charge_wakelock_held;
 	int options;
@@ -454,7 +454,7 @@ static CLASS_ATTR_RW(options);
 static enum alarmtimer_restart qns_alarm_handler(struct alarm * alarm, ktime_t now)
 {
 	pr_info("QNS: ALARM! System wakeup!");
-	__pm_stay_awake(data.wakelock);
+	__pm_stay_awake(&data.wakelock);
 	data.wakelock_held = true;
 	data.alarm_value = 1;
 	return ALARMTIMER_NORESTART;
@@ -482,45 +482,45 @@ static ssize_t alarm_store(struct class *class, struct class_attribute *attr,
 	ktime_t next_alarm;
 	
 	ret = kstrtoint(buf, 10, &val);
-
-	if (!data.wakelock_inited)
+		
+	if(!data.wakelock_inited)
 	{
-		data.wakelock = wakeup_source_register(NULL, "QnovoQNS");
+		wakeup_source_init(&data.wakelock, "QnovoQNS");
 		data.wakelock_inited = true;
 	}
 
-	if (!data.charge_wakelock_inited)
+	if(!data.charge_wakelock_inited)
 	{
-		data.charge_wakelock = wakeup_source_register(NULL, "QnovoQNS");
+		wakeup_source_init(&data.charge_wakelock, "QnovoQNS");
 		data.charge_wakelock_inited = true;
 	}
 
 	if (!ret)
 	{
-		if (val == CHARGE_WAKELOCK)
+		if(val == CHARGE_WAKELOCK)
 		{
-			if (!data.charge_wakelock_held)
+			if(!data.charge_wakelock_held)
 			{
 				pr_info("QNS: Alarm: acquiring charge_wakelock via CHARGE_WAKELOCK");
-				__pm_stay_awake(data.charge_wakelock);
+				__pm_stay_awake(&data.charge_wakelock);
 				data.charge_wakelock_held = true;
 			}
 		}
-		else if (val == CHARGE_WAKELOCK_RELEASE)
+		else if(val == CHARGE_WAKELOCK_RELEASE)
 		{
-			if (data.charge_wakelock_held)
+			if(data.charge_wakelock_held)
 			{
 				pr_info("QNS: Alarm: releasing charge_wakelock via CHARGE_WAKELOCK_RELEASE");
-				__pm_relax(data.charge_wakelock);
+				__pm_relax(&data.charge_wakelock);
 				data.charge_wakelock_held = false;
 			}
 		}
-		else if (val == HANDLED)
+		else if(val == HANDLED)
 		{
-			if (data.wakelock_held)
+			if(data.wakelock_held)
 			{
 				pr_info("QNS: Alarm: releasing wakelock via HANDLED");
-				__pm_relax(data.wakelock);
+				__pm_relax(&data.wakelock);
 			}
 			data.alarm_value = 0;
 			data.wakelock_held = false;
@@ -532,19 +532,19 @@ static ssize_t alarm_store(struct class *class, struct class_attribute *attr,
 				alarm_cancel(&data.alarm);
 			}
 			data.alarm_value = 0;
-			if (data.wakelock_held)
+			if(data.wakelock_held)
 			{
 				pr_info("QNS: Alarm: releasing wakelock via CANCEL");
-				__pm_relax(data.wakelock);
+				__pm_relax(&data.wakelock);
 			}
 			data.wakelock_held = false;
 		}
-		else if (val == IMMEDIATE)
+		else if(val == IMMEDIATE)
 		{
-			if (!data.wakelock_held)
+			if(!data.wakelock_held)
 			{
 				pr_info("QNS: Alarm: acquiring wakelock via IMMEDIATE");
-				__pm_stay_awake(data.wakelock);
+				__pm_stay_awake(&data.wakelock);
 				data.wakelock_held = true;
 			}
 		}
@@ -559,10 +559,10 @@ static ssize_t alarm_store(struct class *class, struct class_attribute *attr,
 			next_alarm = ktime_set(val, 0);
 			alarm_start_relative(&data.alarm, next_alarm);
 
-			if (data.wakelock_held)
+			if(data.wakelock_held)
 			{
 				pr_info("QNS: Alarm: releasing wakelock via alarm>0");
-				__pm_relax(data.wakelock);
+				__pm_relax(&data.wakelock);
 			}
 			data.alarm_value = 0;
 			data.wakelock_held = false;
@@ -752,17 +752,17 @@ static int qns_init(void)
 static void qns_exit(void)
 {
 	if(data.wakelock_held)
-		__pm_relax(data.wakelock);
-
+		__pm_relax(&data.wakelock);
+	
 	data.wakelock_held = false;
-	wakeup_source_unregister(data.wakelock);
-
+	wakeup_source_trash(&data.wakelock);
+	
 	if(data.charge_wakelock_held)
-		__pm_relax(data.charge_wakelock);
+		__pm_relax(&data.charge_wakelock);
 
 	data.charge_wakelock_held = false;
-	wakeup_source_unregister(data.charge_wakelock);
-
+	wakeup_source_trash(&data.charge_wakelock);
+	
 	class_unregister(&qns_class);
 	class_unregister(&qna_class);
 	pr_info("QNS: EXIT\n");

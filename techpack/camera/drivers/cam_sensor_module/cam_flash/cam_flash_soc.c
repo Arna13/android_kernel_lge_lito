@@ -8,63 +8,6 @@
 #include "cam_flash_soc.h"
 #include "cam_res_mgr_api.h"
 
-#if defined(CONFIG_MACH_LAGOON_ACEXLM)
-#define FLSH_ON "cam_flash_on"
-#define FLSH_OFF "cam_flash_off"
-#define TORCH_ON "cam_torch_on"
-#define TORCH_OFF "cam_torch_off"
-
-int msm_flash_pinctrl_init(struct cam_flash_ctrl *fctrl)
-{
-
-	struct device *dev;
-
-	dev = &fctrl->pdev->dev;
-
-	fctrl->pinctrl = devm_pinctrl_get(dev);
-	if (IS_ERR_OR_NULL(fctrl->pinctrl)) {
-		CAM_DBG(CAM_FLASH, "Getting flash pinctrl handle failed");
-		return -EINVAL;
-	}
-	fctrl->gpio_state_flash_on =
-		pinctrl_lookup_state(fctrl->pinctrl,
-				FLSH_ON);
-	if (IS_ERR_OR_NULL(fctrl->gpio_state_flash_on)) {
-		CAM_ERR(CAM_FLASH,
-			"Failed to get the flash on state pinctrl handle");
-		return -EINVAL;
-	}
-	fctrl->gpio_state_flash_off
-		= pinctrl_lookup_state(fctrl->pinctrl,
-				FLSH_OFF);
-	if (IS_ERR_OR_NULL(fctrl->gpio_state_flash_off)) {
-		CAM_ERR(CAM_FLASH,
-			"Failed to get the flash off state pinctrl handle");
-		return -EINVAL;
-	}
-
-	fctrl->gpio_state_torch_on =
-		pinctrl_lookup_state(fctrl->pinctrl,
-				TORCH_ON);
-	if (IS_ERR_OR_NULL(fctrl->gpio_state_torch_on)) {
-		CAM_ERR(CAM_FLASH,
-			"Failed to get the torch on state pinctrl handle");
-		return -EINVAL;
-	}
-	fctrl->gpio_state_torch_off
-		= pinctrl_lookup_state(fctrl->pinctrl,
-				TORCH_OFF);
-	if (IS_ERR_OR_NULL(fctrl->gpio_state_torch_off)) {
-		CAM_ERR(CAM_FLASH,
-			"Failed to get the torch off state pinctrl handle");
-		return -EINVAL;
-	}
-
-	return 0;
-
-}
-#endif
-
 static int32_t cam_get_source_node_info(
 	struct device_node *of_node,
 	struct cam_flash_ctrl *fctrl,
@@ -284,9 +227,7 @@ int cam_flash_get_dt_data(struct cam_flash_ctrl *fctrl,
 		goto release_soc_res;
 	}
 	of_node = fctrl->pdev->dev.of_node;
-#if defined(CONFIG_MACH_LAGOON_ACEXLM)
-	rc = msm_flash_pinctrl_init(fctrl);
-#endif
+
 	rc = cam_soc_util_get_dt_properties(soc_info);
 	if (rc) {
 		CAM_ERR(CAM_FLASH, "Get_dt_properties failed rc %d", rc);

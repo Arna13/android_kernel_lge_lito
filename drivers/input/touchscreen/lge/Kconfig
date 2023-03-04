@@ -62,7 +62,6 @@ config LGE_TOUCH_APP_FW_UPGRADE
 	bool "LGE_TOUCH_APP_FW_UPGRADE"
 	help
 	code for app fw upgrade
-
 config LGE_TOUCH_USE_PANEL_NOTIFY
 	bool "Use lge_panel_notify.h"
 	help
@@ -89,13 +88,5 @@ config LGE_TOUCH_MODULE_FT3518
 	help
 	If you want to test touch module for 2nd input driver, yes 'm' here
 
-config LGE_DISPLAY_RECOVERY_ESD
-	bool "LGE Touch panel global reset - ESD recovery"
-	help
-	If incell touch is applied, say Y
-
 source "drivers/input/touchscreen/lge/lgsic/Kconfig"
-source "drivers/input/touchscreen/lge/synaptics/Kconfig"
-source "drivers/input/touchscreen/lge/focaltech/Kconfig"
-source "drivers/input/touchscreen/lge/himax/Kconfig"
 endif

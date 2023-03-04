@@ -484,9 +484,6 @@ struct scsi_host_template {
 	 */
 	unsigned int cmd_size;
 	struct scsi_host_cmd_pool *cmd_pool;
-
-	/* Delay for runtime autosuspend */
-	int rpm_autosuspend_delay;
 };
 
 /*
@@ -650,6 +647,9 @@ struct Scsi_Host {
 
 	/* The controller does not support WRITE SAME */
 	unsigned no_write_same:1;
+
+	/* Inline encryption support? */
+	unsigned inlinecrypt_support:1;
 
 	unsigned use_blk_mq:1;
 	unsigned use_cmd_list:1;

@@ -173,8 +173,7 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 		return -ENODEV;
 	}
 #if IS_ENABLED(CONFIG_LGE_DISPLAY_COMMON)
-	if(display->panel->bl_config.type != DSI_BACKLIGHT_WLED)
-		display->panel->bl_config.raw_bd = c_conn->bl_device;
+	display->panel->bl_config.raw_bd = c_conn->bl_device;
 #endif
 	display_count++;
 
@@ -388,7 +387,6 @@ static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	struct drm_encoder *drm_enc = NULL;
-	struct msm_display_info display_info;
 
 	if (!conn || !conn->dev || !conn->dev->dev_private)
 		return;
@@ -399,17 +397,12 @@ static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 	if (!sde_kms)
 		return;
 
-	memset(&display_info, 0, sizeof(display_info));
-
 	if (conn->state && conn->state->best_encoder)
 		drm_enc = conn->state->best_encoder;
 	else
 		drm_enc = conn->encoder;
 
-	sde_connector_get_info(conn, &display_info);
-
-	sde_rm_get_resource_info(&sde_kms->rm, drm_enc, avail_res,
-					 display_info.display_type);
+	sde_rm_get_resource_info(&sde_kms->rm, drm_enc, avail_res);
 
 	avail_res->max_mixer_width = sde_kms->catalog->max_mixer_width;
 }
@@ -1283,16 +1276,16 @@ static int _sde_connector_set_ext_hdr_info(
 
 	connector = &c_conn->base;
 
+	if (!connector->hdr_supported) {
+		SDE_ERROR_CONN(c_conn, "sink doesn't support HDR\n");
+		rc = -ENOTSUPP;
+		goto end;
+	}
+
 	memset(&c_state->hdr_meta, 0, sizeof(c_state->hdr_meta));
 
 	if (!usr_ptr) {
 		SDE_DEBUG_CONN(c_conn, "hdr metadata cleared\n");
-		goto end;
-	}
-
-	if (!connector->hdr_supported) {
-		SDE_ERROR_CONN(c_conn, "sink doesn't support HDR\n");
-		rc = -ENOTSUPP;
 		goto end;
 	}
 

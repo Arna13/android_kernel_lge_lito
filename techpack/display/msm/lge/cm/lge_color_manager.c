@@ -24,37 +24,16 @@
 static ssize_t daylight_mode_get(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	struct dsi_panel *panel;
-
-	panel = dev_get_drvdata(dev);
-	if (!panel) {
-		pr_err("panel is NULL\n");
-		return -EINVAL;
-	}
-
-	return sprintf(buf, "%d\n", panel->lge.daylight_mode);
+	return sprintf(buf, "%d\n", 1 );
 }
 
 static ssize_t daylight_mode_set(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	ssize_t ret = strnlen(buf, PAGE_SIZE);
-	struct dsi_panel *panel;
 	int input;
-	panel = dev_get_drvdata(dev);
-
-	if (!panel) {
-		pr_err("panel is NULL\n");
-		return -EINVAL;
-	}
-
 	sscanf(buf, "%d", &input);
-	panel->lge.daylight_mode = input;
-	pr_info("ctrl->daylight_mode (%d)\n", panel->lge.daylight_mode);
-
-	if (panel->lge.ddic_ops && panel->lge.ddic_ops->daylight_mode_set)
-		panel->lge.ddic_ops->daylight_mode_set(panel, panel->lge.daylight_mode);
-
+	pr_info("%s input data is %d\n", __func__, input);
 	return ret;
 }
 
@@ -613,51 +592,6 @@ static ssize_t video_enhancement_set(struct device *dev,
 static DEVICE_ATTR(video_enhancement, S_IRUGO | S_IWUSR | S_IWGRP,
 					video_enhancement_get, video_enhancement_set);
 
-static ssize_t ecc_status_get(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct dsi_panel *panel;
-	int len = 0;
-
-	panel = dev_get_drvdata(dev);
-	if (!panel) {
-		pr_err("panel is NULL\n");
-		return len;
-	}
-	if (panel == NULL) {
-		pr_err("Invalid input\n");
-		return -EINVAL;
-	}
-
-	return sprintf(buf, "%d\n", panel->lge.ecc_status);
-}
-
-static ssize_t ecc_status_set(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
-{
-	ssize_t ret = strnlen(buf, PAGE_SIZE);
-	struct dsi_panel *panel;
-	int input;
-
-	panel = dev_get_drvdata(dev);
-
-	if (panel == NULL) {
-		pr_err("Invalid input\n");
-		return -EINVAL;
-	}
-
-	sscanf(buf, "%d", &input);
-
-	panel->lge.ecc_status = input;
-
-	if (panel->lge.ddic_ops && panel->lge.ddic_ops->lge_set_ecc_status)
-		panel->lge.ddic_ops->lge_set_ecc_status(panel, panel->lge.ecc_status);
-
-	return ret;
-}
-static DEVICE_ATTR(ecc_status, S_IRUGO | S_IWUSR | S_IWGRP,
-					ecc_status_get, ecc_status_set);
-
 void lge_mdss_dsi_bc_dim_work(struct work_struct *work)
 {
 	struct lge_dsi_panel *lge_panel = NULL;
@@ -871,7 +805,6 @@ static struct attribute *color_manager_attrs[] = {
 	&dev_attr_hdr_hbm_lut.attr,
 	&dev_attr_acl_mode.attr,
 	&dev_attr_video_enhancement.attr,
-	&dev_attr_ecc_status.attr,
 	&dev_attr_therm_dim.attr,
 	&dev_attr_brightness_dim.attr,
 	NULL,

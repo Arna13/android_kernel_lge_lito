@@ -47,7 +47,7 @@ static bool g_bTimerStarted = false;
 static struct hrtimer g_tspTimer;
 static ktime_t g_ktTimerPeriod; /* ktime_t equivalent of g_nTimerPeriodMs */
 static int g_nWatchdogCounter = 0;
-static struct wakeup_source *g_tspWakelock;
+static struct wakeup_source g_tspWakelock;
 
 #ifndef NUM_EXTRA_BUFFERS
 #define NUM_EXTRA_BUFFERS 0
@@ -112,7 +112,7 @@ static void VibeOSKernelLinuxInitTimer(void)
 
     /* Initialize a 5ms-timer with VibeOSKernelTimerProc as timer callback (interrupt driven)*/
     g_tspTimer.function = VibeOSKernelTimerProc;
-	g_tspWakelock = wakeup_source_register(NULL,"tspdrv");
+	wakeup_source_init(&g_tspWakelock, "tspdrv");
 }
 
 static void VibeOSKernelLinuxStartTimer(void)
@@ -126,7 +126,7 @@ static void VibeOSKernelLinuxStartTimer(void)
     {
     DbgOutInfo(("VibeOSKernelLinuxStartTimer 2\n"));
 
-        __pm_stay_awake(g_tspWakelock);
+        __pm_stay_awake(&g_tspWakelock);
         /* (Re-)Initialize the semaphore used with the timer */
         sema_init(&g_hSemaphore, NUM_EXTRA_BUFFERS);
 
@@ -198,14 +198,14 @@ static void VibeOSKernelLinuxStopTimer(void)
     ResetOutputData();
 
     g_bIsPlaying = false;
-    __pm_relax(g_tspWakelock);
+    __pm_relax(&g_tspWakelock);
 } 
 
 static void VibeOSKernelLinuxTerminateTimer(void)
 {
     VibeOSKernelLinuxStopTimer();
     hrtimer_cancel(&g_tspTimer);
-    wakeup_source_unregister(g_tspWakelock);
+    wakeup_source_trash(&g_tspWakelock);
 
     if (VibeSemIsLocked(&g_hSemaphore)) up(&g_hSemaphore);
 }

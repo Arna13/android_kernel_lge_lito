@@ -28,9 +28,6 @@
 #include <linux/timekeeping.h>
 #include <uapi/linux/gpio.h>
 
-#ifdef CONFIG_PROC_FS
-#include <linux/proc_fs.h>
-#endif
 #include "gpiolib.h"
 
 #define CREATE_TRACE_POINTS
@@ -219,14 +216,6 @@ int gpiod_get_direction(struct gpio_desc *desc)
 
 	chip = gpiod_to_chip(desc);
 	offset = gpio_chip_hwgpio(desc);
-
-	/*
-	 * Open drain emulation using input mode may incorrectly report
-	 * input here, fix that up.
-	 */
-	if (test_bit(FLAG_OPEN_DRAIN, &desc->flags) &&
-	    test_bit(FLAG_IS_OUT, &desc->flags))
-		return 0;
 
 	if (!chip->get_direction)
 		return status;
@@ -1912,9 +1901,7 @@ static int gpiochip_add_irqchip(struct gpio_chip *gpiochip,
 		type = IRQ_TYPE_NONE;
 	}
 
-#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
 	if (!gpiochip->to_irq)
-#endif
 		gpiochip->to_irq = gpiochip_to_irq;
 
 	gpiochip->irq.default_type = type;
@@ -1926,13 +1913,11 @@ static int gpiochip_add_irqchip(struct gpio_chip *gpiochip,
 	else
 		ops = &gpiochip_domain_ops;
 
-#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
 	if (gpiochip->irq.parent_domain)
 		gpiochip->irq.domain = irq_domain_add_hierarchy(gpiochip->irq.parent_domain,
 								0, gpiochip->ngpio,
 								np, ops, gpiochip);
 	else
-#endif
 		gpiochip->irq.domain = irq_domain_add_simple(np, gpiochip->ngpio,
 							     gpiochip->irq.first,
 							     ops, gpiochip);
@@ -2563,27 +2548,19 @@ EXPORT_SYMBOL_GPL(gpiochip_free_own_desc);
 int gpiod_direction_input(struct gpio_desc *desc)
 {
 	struct gpio_chip	*chip;
-	int			status = 0;
+	int			status = -EINVAL;
 
 	VALIDATE_DESC(desc);
 	chip = desc->gdev->chip;
 
-	if (!chip->get && chip->direction_input) {
+	if (!chip->get || !chip->direction_input) {
 		gpiod_warn(desc,
-			"%s: missing get() and direction_input() operations\n",
+			"%s: missing get() or direction_input() operations\n",
 			__func__);
 		return -EIO;
 	}
 
-	if (chip->direction_input) {
-		status = chip->direction_input(chip, gpio_chip_hwgpio(desc));
-	} else if (chip->get_direction &&
-		  (chip->get_direction(chip, gpio_chip_hwgpio(desc)) != 1)) {
-		gpiod_warn(desc,
-			"%s: missing direction_input() operation\n",
-			__func__);
-		return -EIO;
-	}
+	status = chip->direction_input(chip, gpio_chip_hwgpio(desc));
 	if (status == 0)
 		clear_bit(FLAG_IS_OUT, &desc->flags);
 
@@ -2605,28 +2582,16 @@ static int gpiod_direction_output_raw_commit(struct gpio_desc *desc, int value)
 {
 	struct gpio_chip *gc = desc->gdev->chip;
 	int val = !!value;
-	int ret = 0;
+	int ret;
 
-	if (!gc->set && !gc->direction_output) {
+	if (!gc->set || !gc->direction_output) {
 		gpiod_warn(desc,
-		       "%s: missing set() and direction_output() operations\n",
+		       "%s: missing set() or direction_output() operations\n",
 		       __func__);
 		return -EIO;
 	}
 
-	if (gc->direction_output) {
-		ret = gc->direction_output(gc, gpio_chip_hwgpio(desc), val);
-	} else {
-		if (gc->get_direction &&
-		    gc->get_direction(gc, gpio_chip_hwgpio(desc))) {
-			gpiod_warn(desc,
-				"%s: missing direction_output() operation\n",
-				__func__);
-			return -EIO;
-		}
-		gc->set(gc, gpio_chip_hwgpio(desc), val);
-	}
-
+	ret = gc->direction_output(gc, gpio_chip_hwgpio(desc), val);
 	if (!ret)
 		set_bit(FLAG_IS_OUT, &desc->flags);
 	trace_gpio_value(desc_to_gpio(desc), 0, val);
@@ -3771,9 +3736,8 @@ static struct gpio_desc *gpiod_find(struct device *dev, const char *con_id,
 
 		if (chip->ngpio <= p->chip_hwnum) {
 			dev_err(dev,
-				"requested GPIO %u (%u) is out of range [0..%u] for chip %s\n",
-				idx, p->chip_hwnum, chip->ngpio - 1,
-				chip->label);
+				"requested GPIO %d is out of range [0..%d] for chip %s\n",
+				idx, chip->ngpio, chip->label);
 			return ERR_PTR(-EINVAL);
 		}
 
@@ -4359,7 +4323,7 @@ static int __init gpiolib_dev_init(void)
 }
 core_initcall(gpiolib_dev_init);
 
-#if defined(CONFIG_DEBUG_FS) || defined(CONFIG_PROC_FS)
+#ifdef CONFIG_DEBUG_FS
 
 static void gpiolib_dbg_show(struct seq_file *s, struct gpio_device *gdev)
 {
@@ -4492,9 +4456,6 @@ static int __init gpiolib_debugfs_init(void)
 	/* /sys/kernel/debug/gpio */
 	(void) debugfs_create_file("gpio", S_IFREG | S_IRUGO,
 				NULL, NULL, &gpiolib_operations);
-#ifdef CONFIG_PROC_FS
-	proc_create("gpio", 0444, NULL, &gpiolib_operations);
-#endif
 	return 0;
 }
 subsys_initcall(gpiolib_debugfs_init);

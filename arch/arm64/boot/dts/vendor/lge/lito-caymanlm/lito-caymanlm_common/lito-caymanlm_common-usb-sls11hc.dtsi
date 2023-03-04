@@ -15,7 +15,7 @@
 		interrupt-parent = <&tlmm>;
 		interrupts = <110 IRQ_TYPE_LEVEL_HIGH>;
 
-		spi-max-frequency = <20000000>;
+		spi-max-frequency = <10000000>;
 
 		/* cdone-gpio = <&tlmm 35 0>; */
 		reset-gpio = <&tlmm 132 GPIO_ACTIVE_LOW>;

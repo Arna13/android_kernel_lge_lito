@@ -28,7 +28,7 @@
 #include "reset.h"
 #include "vdd-level-lito.h"
 
-#if defined(CONFIG_LFS_MMC) && (defined(CONFIG_MACH_LITO_CAYMANLM) || defined(CONFIG_MACH_LITO_ACELM))
+#if defined(CONFIG_LFS_MMC) && defined(CONFIG_MACH_LITO_CAYMANLM)
 #include <soc/qcom/lge/board_lge.h>
 #endif
 
@@ -708,7 +708,7 @@ static const struct freq_tbl ftbl_gcc_sdcc2_apps_clk_src[] = {
 	{ }
 };
 
-#if defined(CONFIG_LFS_MMC) && (defined(CONFIG_MACH_LITO_CAYMANLM) || defined(CONFIG_MACH_LITO_ACELM))
+#if defined(CONFIG_LFS_MMC) && defined(CONFIG_MACH_LITO_CAYMANLM)
 static const struct freq_tbl ftbl_gcc_sdcc2_apps_clk_src_limit_max[] = {
 	F(400000, P_BI_TCXO, 12, 1, 4),
 	F(19200000, P_BI_TCXO, 1, 0, 0),
@@ -2662,7 +2662,7 @@ static const struct of_device_id gcc_lito_match_table[] = {
 };
 MODULE_DEVICE_TABLE(of, gcc_lito_match_table);
 
-#if defined(CONFIG_LFS_MMC) && (defined(CONFIG_MACH_LITO_CAYMANLM) || defined(CONFIG_MACH_LITO_ACELM))
+#if defined(CONFIG_LFS_MMC) && defined(CONFIG_MACH_LITO_CAYMANLM)
 static void gcc_sm7250_sdcc2_clk_fixup(void)
 {
 	if (lge_get_sku_carrier() != HW_SKU_NA_CDMA_VZW) {
@@ -2698,7 +2698,7 @@ static int gcc_lito_probe(struct platform_device *pdev)
 		return PTR_ERR(vdd_cx_ao.regulator[0]);
 	}
 
-#if defined(CONFIG_LFS_MMC) && (defined(CONFIG_MACH_LITO_CAYMANLM) || defined(CONFIG_MACH_LITO_ACELM))
+#if defined(CONFIG_LFS_MMC) && defined(CONFIG_MACH_LITO_CAYMANLM)
 	gcc_sm7250_sdcc2_clk_fixup();
 #endif
 

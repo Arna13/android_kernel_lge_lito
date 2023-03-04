@@ -27,7 +27,7 @@
 #include <touch_sub_core.h>
 #include <touch_sub_hwif.h>
 #include <touch_sub_common.h>
-#ifdef CONFIG_LGE_TOUCH_SUB_PEN
+#ifdef CONFIG_LGE_TOUCH_PEN
 #include <touch_sub_pen.h>
 /* define temp struct here */
 static struct pen_data *tpen;
@@ -704,7 +704,7 @@ int sw42902_sub_ic_info(struct device *dev)
 error:
 	return ret;
 }
-#if 0
+
 static void sw42902_get_longpress_info(struct device *dev)
 {
 	struct sw42902_data *d = to_sw49202_data(dev);
@@ -892,7 +892,7 @@ static int sw42902_onetap_enable(struct device *dev, bool enable)
 
 	return ret;
 }
-#endif
+
 static void set_debug_reason(struct device *dev, int type)
 {
 	struct sw42902_data *d = to_sw49202_data(dev);
@@ -909,7 +909,6 @@ static void set_debug_reason(struct device *dev, int type)
 	case LPWG_DEBUG_TCI_1:
 		d->lpwg_failreason_data |= (1<<0);
 		break;
-#if 0
 	case LPWG_DEBUG_TCI_2:
 		d->lpwg_failreason_data |= (1<<8);
 		break;
@@ -919,7 +918,6 @@ static void set_debug_reason(struct device *dev, int type)
 	case LPWG_DEBUG_LONGPRESS:
 		d->lpwg_failreason_data |= (1<<24);
 		break;
-#endif
 	default:
 		break;
 	}
@@ -941,13 +939,13 @@ static void sw42902_get_tci_info(struct device *dev)
 	ts->tci.info[TCI_1].touch_sub_slop = 100;
 	ts->tci.info[TCI_1].tap_distance = 10;
 	ts->tci.info[TCI_1].intr_delay = 0;
-#if 0
+
 	ts->tci.info[TCI_2].min_intertap = 3;
 	ts->tci.info[TCI_2].max_intertap = 70;
 	ts->tci.info[TCI_2].touch_sub_slop = 100;
 	ts->tci.info[TCI_2].tap_distance = 255;
 	ts->tci.info[TCI_2].intr_delay = 20;
-#endif
+
 }
 
 static int sw42902_get_tci_data(struct device *dev, int count)
@@ -1083,11 +1081,10 @@ static int sw42902_tci_knock(struct device *dev)
 {
 	struct touch_sub_core_data *ts = to_touch_sub_core(dev);
 	struct tci_info *info1 = &ts->tci.info[TCI_1];
-//	struct tci_info *info2 = &ts->tci.info[TCI_2];
+	struct tci_info *info2 = &ts->tci.info[TCI_2];
 	u32 lpwg_data[7] = {0, };
 	int ret = 0;
 
-/*
 	lpwg_data[0] = ts->tci.mode;
 	lpwg_data[1] = info1->tap_count | (info2->tap_count << 16);
 	lpwg_data[2] = info1->min_intertap | (info2->min_intertap << 16);
@@ -1095,14 +1092,6 @@ static int sw42902_tci_knock(struct device *dev)
 	lpwg_data[4] = info1->touch_sub_slop | (info2->touch_sub_slop << 16);
 	lpwg_data[5] = info1->tap_distance | (info2->tap_distance << 16);
 	lpwg_data[6] = info1->intr_delay | (info2->intr_delay << 16);
-*/
-	lpwg_data[0] = ts->tci.mode;
-	lpwg_data[1] = info1->tap_count;
-	lpwg_data[2] = info1->min_intertap;
-	lpwg_data[3] = info1->max_intertap;
-	lpwg_data[4] = info1->touch_sub_slop;
-	lpwg_data[5] = info1->tap_distance;
-	lpwg_data[6] = info1->intr_delay;
 	ret = sw42902_sub_reg_write(dev, ABT_CMD + TCI_ENABLE,
 			&lpwg_data[0], sizeof(lpwg_data));
 
@@ -1111,7 +1100,7 @@ static int sw42902_tci_knock(struct device *dev)
 	set_debug_reason(dev, LPWG_DEBUG_TCI_1);
 	return ret;
 }
-#if 0
+
 static int sw42902_tci_password(struct device *dev)
 {
 	set_debug_reason(dev, LPWG_DEBUG_TCI_2);
@@ -1229,12 +1218,12 @@ static bool sw42902_check_ai_pick_event(struct device *dev)
 
 	return (result[0] & result[1]);
 }
-#endif
+
 static int sw42902_lpwg_control(struct device *dev, int mode)
 {
 	struct touch_sub_core_data *ts = to_touch_sub_core(dev);
 	struct tci_info *info1 = &ts->tci.info[TCI_1];
-//	struct sw42902_data *d = to_sw49202_data(dev);
+	struct sw42902_data *d = to_sw49202_data(dev);
 	char *mode_str[4] = {"None", "Knock-On", "Knock-On/Code", "Knock-Code"};
 	int ret = 0;
 
@@ -1250,10 +1239,8 @@ static int sw42902_lpwg_control(struct device *dev, int mode)
 	case LPWG_NONE:
 		ts->tci.mode = 0;
 		ret = sw42902_tci_control(dev, ENABLE_CTRL);
-#if 0
 		if (d->ai_pick.enable)
 			sw42902_ai_pick_enable(dev, d->ai_pick.enable);
-#endif
 		break;
 	case LPWG_DOUBLE_TAP:
 		ts->tci.mode = 0x01;
@@ -1263,7 +1250,6 @@ static int sw42902_lpwg_control(struct device *dev, int mode)
 		ret = sw42902_tci_control(dev, ACTIVE_AREA_CTRL);
 		ret = sw42902_tci_knock(dev);
 		break;
-#if 0
 	case LPWG_PASSWORD:
 		ts->tci.mode = 0x01 | (0x01 << 16);
 		info1->intr_delay = ts->tci.double_tap_check ? 68 : 0;
@@ -1282,7 +1268,6 @@ static int sw42902_lpwg_control(struct device *dev, int mode)
 		if (d->ai_pick.enable)
 			sw42902_ai_pick_enable(dev, d->ai_pick.enable);
 		break;
-#endif
 	default:
 		TOUCH_E("Unknown tci control case\n");
 		ret = -EINVAL;
@@ -1291,7 +1276,7 @@ static int sw42902_lpwg_control(struct device *dev, int mode)
 
 	return ret;
 }
-#if 0
+
 static int sw42902_get_swipe_data(struct device *dev)
 {
 	struct touch_sub_core_data *ts = to_touch_sub_core(dev);
@@ -1803,7 +1788,7 @@ static int sw42902_swipe_enable(struct device *dev, bool enable)
 
 	return ret;
 }
-#endif
+
 #if defined(__SUPPORT_CLK_CTRL)
 static int sw42902_clock(struct device *dev, u32 onoff)
 {
@@ -1898,7 +1883,6 @@ static void sw42902_print_failreason(struct device *dev, int type, int count)
 				&buf, sizeof(buf));
 		fail_num = LPWG_FAILREASON_TCI_NUM;
 		break;
-#if 0
 	case LPWG_DEBUG_TCI_2:
 		ret = sw42902_sub_reg_read(dev, ABT_CMD + TCI1_FAILREASON_BUF,
 				&buf, sizeof(buf));
@@ -1914,7 +1898,6 @@ static void sw42902_print_failreason(struct device *dev, int type, int count)
 				&buf, sizeof(buf));
 		fail_num = LPWG_FAILREASON_LONGPRESS_NUM;
 		break;
-#endif
 	default:
 		break;
 	}
@@ -1935,7 +1918,6 @@ static void sw42902_print_failreason(struct device *dev, int type, int count)
 				TOUCH_I("[%s]-DBG[%d/%d] = %s\n",
 						debug_str[type], j + 1, count,
 						lpwg_failreason_tci_str[data]);
-#if 0
 			if (type == LPWG_DEBUG_TCI_2)
 				TOUCH_I("[%s]-DBG[%d/%d] = %s\n",
 						debug_str[type], j + 1, count,
@@ -1948,7 +1930,6 @@ static void sw42902_print_failreason(struct device *dev, int type, int count)
 				TOUCH_I("[%s]-DBG[%d/%d] = %s\n",
 						debug_str[type], j + 1, count,
 						lpwg_failreason_longpress_str[data]);
-#endif
 		} else {
 			break;
 		}
@@ -1988,7 +1969,7 @@ static void sw42902_lpwg_failreason(struct device *dev)
 		sw42902_print_failreason(dev, LPWG_DEBUG_TCI_1,
 				count[LPWG_DEBUG_TCI_1]);
 	}
-#if 0
+
 	if (count[LPWG_DEBUG_TCI_2]) { /* Knock-code */
 		sw42902_print_failreason(dev, LPWG_DEBUG_TCI_2,
 				count[LPWG_DEBUG_TCI_2]);
@@ -2004,7 +1985,6 @@ static void sw42902_lpwg_failreason(struct device *dev)
 		sw42902_print_failreason(dev, LPWG_DEBUG_LONGPRESS,
 				count[LPWG_DEBUG_LONGPRESS]);
 	}
-#endif
 #endif
 }
 
@@ -2059,36 +2039,33 @@ int sw42902_sub_tc_driving(struct device *dev, int mode)
 	/* __SW42902_STILL_BRING_UP */
 	switch (mode) {
 		case LCD_MODE_U0:
-			if (atomic_read(&ts->state.fm_radio)) {
-					ctrl = 0x3;
+			if (atomic_read(&ts->state.active_pen)) {
+				ctrl = 0x3;
 			} else {
-// delete pen knock on.
-//				if (atomic_read(&ts->state.active_pen)) {
-//					ctrl = 0x8003;
-//				} else {
-					ctrl = 0x1;
-//				}
+				ctrl = 0x1;
 			}
 			break;
 		case LCD_MODE_U3:
 			if (atomic_read(&ts->state.active_pen)) {
-				if (atomic_read(&ts->state.dualscreen))
-					ctrl = 0x1303;
-				else
-					ctrl = 0x303;
-			} else {
-				ctrl = 0x8303;
-			}
-/*			if (atomic_read(&ts->state.active_pen)) {
-				if(atomic_read(&ts->state.film_mode)) {
-					TOUCH_I("%s: protection film mode  = %d\n", __func__,
-						atomic_read(&ts->state.film_mode));
-					ctrl = 0x30b;
-				} else {
-					if (ts->aes_mode == 2)
-						ctrl = 0x303;
-					else if (ts->aes_mode == 0)
+				if (atomic_read(&ts->state.wireless)) {
+					if(atomic_read(&ts->state.film_mode)) {
+						ctrl = 0x130b;
+					} else {
 						ctrl = 0x1303;
+					}
+					TOUCH_I("%s: wireless charger (ctrl:0x%X)\n",
+							__func__, ctrl);
+				} else {
+					if(atomic_read(&ts->state.film_mode)) {
+						TOUCH_I("%s: protection film mode  = %d\n", __func__,
+							atomic_read(&ts->state.film_mode));
+						ctrl = 0x30b;
+					} else {
+						if (ts->aes_mode == 2)
+							ctrl = 0x303;
+						else if (ts->aes_mode == 0)
+							ctrl = 0x1303;
+					}
 				}
 			} else {
 				if(atomic_read(&ts->state.film_mode)) {
@@ -2099,7 +2076,6 @@ int sw42902_sub_tc_driving(struct device *dev, int mode)
 					ctrl = 0x8303;
 				}
 			}
-*/
 			break;
 
 		case LCD_MODE_STOP:
@@ -2157,7 +2133,7 @@ int sw42902_sub_tc_driving(struct device *dev, int mode)
 out:
 	return 0;
 }
-#ifdef CONFIG_LGE_TOUCH_SUB_PEN
+#ifdef CONFIG_LGE_TOUCH_PEN
 static int sw42902_release_pen_event(struct device *dev)
 {
 	struct touch_sub_core_data *ts = to_touch_sub_core(dev);
@@ -2221,18 +2197,11 @@ static int sw42902_lpwg_mode(struct device *dev)
 		return 0;
 	}
 
-#if defined(CONFIG_SUB_SECURE_TOUCH)
-	if (atomic_read(&ts->st_enabled)) {
-		TOUCH_E("Secure Session enabled, don't set anything\n");
-		return ret;
-	}
-#endif
-
 	if (atomic_read(&ts->state.fb) == FB_SUSPEND) {
 		if (ts->mfts_lpwg) {
 			TOUCH_I("%s mfts_lpwg", __func__);
 			ret = sw42902_lpwg_control(dev, LPWG_DOUBLE_TAP);
-//			sw42902_swipe_enable(dev, true);
+			sw42902_swipe_enable(dev, true);
 			ret = sw42902_sub_tc_driving(dev, LCD_MODE_U0);
 			return 0;
 		}
@@ -2258,8 +2227,7 @@ static int sw42902_lpwg_mode(struct device *dev)
 					ts->lpwg.mode, ts->lpwg.screen,
 					ts->lpwg.sensor, ts->lpwg.qcover);
 
-			if (ts->lpwg.mode == LPWG_NONE) {
-#if 0
+			if (ts->lpwg.mode == LPWG_NONE
 					&& !ts->swipe[SWIPE_L].enable
 					&& !ts->swipe[SWIPE_R].enable
 					&& !ts->swipe[SWIPE_U].enable
@@ -2269,16 +2237,14 @@ static int sw42902_lpwg_mode(struct device *dev)
 					&& !d->ai_pick.enable
 					&& !d->lpwg_longpress.enable
 					&& !d->lpwg_onetap.enable) {
-#endif
 				/* knock on/code disable, swipe disable */
 				TOUCH_I("LPWG_NONE & swipe disable - DeepSleep\n");
 				sw42902_sub_sleep_ctrl(dev, IC_DEEP_SLEEP);
 			} else {
 				sw42902_sub_sleep_ctrl(dev, IC_NORMAL);
 				ret = sw42902_lpwg_control(dev, ts->lpwg.mode);
-//				sw42902_swipe_enable(dev, true);
+				sw42902_swipe_enable(dev, true);
 				sw42902_sub_tc_driving(dev, LCD_MODE_U0);
-#if 0
 				if (d->lpwg_abs.enable) {
 					TOUCH_I("%s: enable lpwg_abs\n", __func__);
 					sw42902_lpwg_abs_enable(dev, d->lpwg_abs.enable);
@@ -2295,12 +2261,11 @@ static int sw42902_lpwg_mode(struct device *dev)
 					TOUCH_I("%s: enable onetap\n", __func__);
 					sw42902_onetap_enable(dev, d->lpwg_onetap.enable);
 				}
-#endif
 			}
 		}
 		return ret;
 	}
-#ifdef CONFIG_LGE_TOUCH_SUB_PEN
+#ifdef CONFIG_LGE_TOUCH_PEN
 	sw42902_release_pen_event(dev);
 #endif
 	touch_sub_report_all_event(ts);
@@ -2323,12 +2288,8 @@ static int sw42902_lpwg_mode(struct device *dev)
 		sw42902_sub_sleep_ctrl(dev, IC_DEEP_SLEEP);
 	} else {
 		/* partial */
-		if (atomic_read(&ts->state.fb) == FB_RESUME) {
-			TOUCH_I("now skip it and call work_queue later.\n");
-			queue_delayed_work(ts->wq, &d->partial_tcdriving, 0);
-		} else {
-			TOUCH_I("partial skip because state.fb is not resume\n");
-		}
+		TOUCH_I("skip resume partial setting\n");
+		queue_delayed_work(ts->wq, &d->partial_tcdriving, 0);
 	}
 
 	return ret;
@@ -2450,11 +2411,6 @@ static void sw42902_connect(struct device *dev)
 		return;
 	}
 
-	if (atomic_read(&ts->state.sleep) == IC_DEEP_SLEEP) {
-		TOUCH_I("IC_DEEP_SLEEP - Don't try\n");
-		return;
-	}
-
 	TOUCH_I("CHARGER_STS addr=%x, val=%d",
 			ABT_CMD + SPECIAL_CHARGER_INFO, d->charger);
 	sw42902_sub_reg_write(dev, ABT_CMD + SPECIAL_CHARGER_INFO,
@@ -2549,6 +2505,10 @@ static int sw42902_wireless_status(struct device *dev, u32 onoff)
 	TOUCH_I("Wireless charger: 0x%02X\n", atomic_read(&ts->state.wireless));
 	sw42902_connect(dev);
 
+	if (atomic_read(&ts->state.active_pen)) {
+		sw42902_lpwg_mode(dev);
+	}
+
 	return 0;
 }
 
@@ -2640,15 +2600,13 @@ static void sw42902_partial_tcdriving_work_func(struct work_struct *partial_tcdr
 		TOUCH_I("resume Partial\n");
 		sw42902_sub_sleep_ctrl(d->dev, IC_NORMAL);
 		sw42902_lpwg_control(d->dev, ts->lpwg.mode);
-//		sw42902_swipe_enable(d->dev, true);
+		sw42902_swipe_enable(d->dev, true);
 		sw42902_sub_tc_driving(d->dev, LCD_MODE_U0);
-#if 0
 		if (d->ai_pick.enable) {
 			TOUCH_I("%s: enable ai pick\n", __func__);
 			sw42902_ai_pick_enable(d->dev, d->ai_pick.enable);
 		}
 		sw42902_longpress_enable(d->dev, false);
-#endif
 	} else {
 		TOUCH_I("resume Partial skip\n");
 	}
@@ -2699,40 +2657,6 @@ static int sw42902_notify(struct device *dev, ulong event, void *data)
 	case NOTIFY_EARJACK:
 		TOUCH_I("NOTIFY_EARJACK!\n");
 		ret = sw42902_earjack_status(dev, *(u32 *)data);
-		break;
-	case NOTIFY_FM_RADIO:
-		TOUCH_I("NOTIFY_FM_RADIO!\n");
-		switch (d->driving_mode) {
-			case LCD_MODE_U0:
-				ctrl = 0x04;
-				sw42902_sub_reg_write(dev, addr, &ctrl, sizeof(ctrl));
-				touch_sub_msleep(param->sys_tc_stop_delay);
-				TOUCH_I("TC STOP first\n");
-				if (atomic_read(&ts->state.fm_radio)) {
-					ctrl = 0x3;
-				} else {
-// delete pen knock on.
-//					if (atomic_read(&ts->state.active_pen)) {
-//						ctrl = 0x8003;
-//					} else {
-						ctrl = 0x1;
-//					}
-				}
-				sw42902_sub_reg_write(dev, addr,
-						&ctrl, sizeof(ctrl));
-				TOUCH_I("sw42902 fm radio state write(0x%x) = (0x%x)\n",
-						addr,  ctrl);
-				/* tc_status check */
-				sw42902_sub_reg_read(dev, TC_IC_STATUS, (u8 *)&rdata, sizeof(u32));
-				TOUCH_I("read ic_status(%x) = %x\n", TC_IC_STATUS, rdata);
-				break;
-
-			case LCD_MODE_U3:
-				TOUCH_I("Set FM Radio in U3:(%d)\n", *(u32 *)data);
-				ret = sw42902_sub_reg_write(dev, ABT_CMD +
-						FM_RADIO_CTRL, (u32 *)data, sizeof(u32));
-				break;
-		}
 		break;
 	case NOTIFY_IME_STATE:
 		TOUCH_I("NOTIFY_IME_STATE!\n");
@@ -2859,7 +2783,7 @@ static int sw42902_probe(struct device *dev)
 	TOUCH_I("sw42902 probe\n");
 
 	d = devm_kzalloc(dev, sizeof(*d), GFP_KERNEL);
-//	tpen = kzalloc(sizeof(struct pen_data), GFP_KERNEL);
+	tpen = kzalloc(sizeof(struct pen_data), GFP_KERNEL);
 	if (!d) {
 		TOUCH_E("failed to allocate synaptics data\n");
 		return -ENOMEM;
@@ -2886,41 +2810,45 @@ static int sw42902_probe(struct device *dev)
 	sw42902_init_locks(d);
 
 	boot_mode = touch_sub_check_boot_mode(dev);
+	if (boot_mode == TOUCH_CHARGER_MODE
+			|| boot_mode == TOUCH_LAF_MODE
+			|| boot_mode == TOUCH_RECOVERY_MODE) {
+		TOUCH_I("%s: boot_mode = %d\n", __func__, boot_mode);
+		touch_sub_gpio_init(ts->reset_pin, "touch_sub_reset");
+		touch_sub_gpio_direction_output(ts->reset_pin, 1);
+		touch_sub_msleep(ts->caps.hw_reset_delay);
+		sw42902_init(dev);
+		/* Deep Sleep */
+		sw42902_sub_sleep_ctrl(dev, IC_DEEP_SLEEP);
+		return 0;
+	}
+
 	if ((boot_mode >= TOUCH_MINIOS_AAT)
 			&& (boot_mode <= TOUCH_MINIOS_MFTS_DS_FLAT)) {
-//			atomic_set(&ts->state.film_mode, 1);
-//			TOUCH_I("%s: protection film mode  = %d\n", __func__,
-//				atomic_read(&ts->state.film_mode));
+			atomic_set(&ts->state.film_mode, 1);
+			TOUCH_I("%s: protection film mode  = %d\n", __func__,
+				atomic_read(&ts->state.film_mode));
 			atomic_set(&ts->state.active_pen, 1);
 			TOUCH_I("%s: active pen state  = %d\n", __func__,
 				atomic_read(&ts->state.active_pen));
 	}
 	sw42902_get_tci_info(dev);
-#if 0
 	sw42902_get_swipe_info(dev);
 
 	sw42902_get_lpwg_abs_info(dev);
 	sw42902_init_ai_pick_info(dev);
 	sw42902_get_longpress_info(dev);
 	sw42902_get_onetap_info(dev);
-#endif
+
 	pm_qos_add_request(&d->pm_qos_req, PM_QOS_CPU_DMA_LATENCY,
 			PM_QOS_DEFAULT_VALUE);
 
-	if (boot_mode == TOUCH_CHARGER_MODE
-			|| boot_mode == TOUCH_LAF_MODE
-			|| boot_mode == TOUCH_RECOVERY_MODE) {
-		TOUCH_I("%s: boot_mode = %d\n", __func__, boot_mode);
-		sw42902_power(dev, POWER_OFF);
-		return 0;
-	}
-
-//	ts->aes_mode = 2;
-//	tpen->uevent_handled = true;
+	ts->aes_mode = 2;
+	tpen->uevent_handled = true;
 	d->lcd_mode = LCD_MODE_U3;
 	d->lpwg_failreason_ctrl = LPWG_FAILREASON_ENABLE;
 
-//	ts->pred_filter = 0;
+	ts->pred_filter = 0;
 
 	return 0;
 }
@@ -3961,38 +3889,6 @@ error:
 	return 0;
 }
 
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-static int sw42902_app_upgrade(struct device *dev)
-{
-	struct touch_core_data *ts = to_touch_core(dev);
-	const struct firmware *fw = NULL;
-	struct firmware temp_fw;
-	int ret = 0;
-
-	if (atomic_read(&ts->state.fb) >= FB_SUSPEND) {
-		TOUCH_I("state.fb is not FB_RESUME\n");
-		return -EPERM;
-	}
-
-	if ((ts->app_fw_upgrade.offset == 0) || (ts->app_fw_upgrade.data == NULL)) {
-		TOUCH_I("app_fw_upgrade.offset = %d, app_fw_upgrade.data = %p\n",
-				(int)ts->app_fw_upgrade.offset, ts->app_fw_upgrade.data);
-		return -EPERM;
-	}
-
-	memset(&temp_fw, 0, sizeof(temp_fw));
-	temp_fw.size = ts->app_fw_upgrade.offset;
-	temp_fw.data = ts->app_fw_upgrade.data;
-
-	fw = &temp_fw;
-
-	TOUCH_I("fw size:%zu, data: %p\n", fw->size, fw->data);
-
-	ret = sw42902_fw_upgrade(dev, fw);
-
-	return ret;
-}
-#endif
 static int sw42902_esd_recovery(struct device *dev)
 {
 	TOUCH_TRACE();
@@ -4097,13 +3993,13 @@ static int sw42902_resume(struct device *dev)
 	TOUCH_I("Force LCD Mode setting : d->lcd_mode = %d\n", d->lcd_mode);
 #endif
 #endif
-#if 0
+
 	if (d->lpwg_abs.enable) {
 		TOUCH_I("%s: disable lpwg_abs\n", __func__);
 		d->lpwg_abs.enable = false;
 		sw42902_lpwg_abs_enable(d->dev, d->lpwg_abs.enable);
 	}
-#endif
+
 	boot_mode = touch_sub_check_boot_mode(dev);
 
 	switch (boot_mode) {
@@ -4247,9 +4143,7 @@ static int sw42902_init(struct device *dev)
 
 	d->driving_mode = LCD_MODE_UNKNOWN;
 
-	TOUCH_I("%s: charger_state = 0x%02X ime = %d film = %d fm_radio = %d\n",
-			__func__, d->charger, atomic_read(&ts->state.ime),
-			atomic_read(&ts->state.film), atomic_read(&ts->state.fm_radio));
+	TOUCH_I("%s: charger_state = 0x%02X\n", __func__, d->charger);
 
 	ret = sw42902_ic_test(dev);
 
@@ -4347,12 +4241,6 @@ static int sw42902_init(struct device *dev)
 	if (ret)
 		TOUCH_E("failed to write \'reg_film_state\', ret:%d\n", ret);
 
-	data = atomic_read(&ts->state.fm_radio);
-	ret = sw42902_sub_reg_write(dev, ABT_CMD +
-			FM_RADIO_CTRL, &data, sizeof(data));
-	if (ret)
-		TOUCH_E("failed to write \'reg_fm_radio\', ret:%d\n", ret);
-
 	sw42902_setup_q_sensitivity(dev, d->q_sensitivity);
 
 	atomic_set(&d->init, IC_INIT_DONE);
@@ -4364,20 +4252,7 @@ static int sw42902_init(struct device *dev)
 
 	return 0;
 }
-#if 0
-int sw42902_check_abnormal_signal(struct device *dev)
-{
-	struct sw42902_data *d = to_sw49202_data(dev);
 
-	if (d->info.abnormal_sts != 0) {
-		TOUCH_I("Check signal: %s%d\n",
-				(d->info.abnormal_sts >> 6 & 0x1) > 0 ? "-":"+",
-				(d->info.abnormal_sts & 0x3F) * 4);
-	}
-
-	return 0;
-}
-#endif
 int sw42902_sub_check_status(struct device *dev)
 {
 	struct sw42902_data *d = to_sw49202_data(dev);
@@ -4388,10 +4263,7 @@ int sw42902_sub_check_status(struct device *dev)
 
 	TOUCH_D(ABS, "%s : status [0x%016llx] ic_status [0x%08x], tc_status [0x%08x]",
 			__func__, (u64)status, d->info.ic_status, d->info.tc_status);
-#if 0
-	/* check abnormal signal pattern */
-	sw42902_check_abnormal_signal(dev);
-#endif
+
 	/* Status Checking */
 	status_mask = status ^ STATUS_NORMAL_MASK;
 
@@ -4453,7 +4325,7 @@ int sw42902_sub_check_status(struct device *dev)
 
 	return ret;
 }
-#if 0
+
 static void sw42902_lpwg_abs_filter(struct device *dev, u8 touch_sub_id)
 {
 	struct touch_sub_core_data *ts = to_touch_sub_core(dev);
@@ -4487,38 +4359,33 @@ static void sw42902_lpwg_abs_filter(struct device *dev, u8 touch_sub_id)
 
 	ts->tdata[touch_sub_id].y = new_y;
 }
-#endif
+
 int sw42902_sub_irq_abs_data(struct device *dev)
 {
 	struct touch_sub_core_data *ts = to_touch_sub_core(dev);
 	struct sw42902_data *d = to_sw49202_data(dev);
 	struct sw42902_touch_sub_info *info = &d->info;
-//	struct sw42902_pen_data *pen = &info->pen;
+	struct sw42902_pen_data *pen = &info->pen;
 	struct sw42902_touch_sub_data *data = info->data;
 	struct touch_sub_data *tdata = NULL;
-//	u32 pen_count = info->pen_cnt;
+	u32 pen_count = info->pen_cnt;
 	u32 touch_sub_count = info->touch_sub_cnt;
 	u8 finger_index = 0;
 	int i = 0;
 	int ret = 0;
-#if 0
-	u32 debug_palm[11] = {0, };
-	int force_cancel_mask = 0;
-#endif
 //	ts->intr_status &= ~(TOUCH_IRQ_FINGER | TOUCH_IRQ_PEN);
 
 //	ts->new_pen = 0;
-#if 0
 	if (pen_count) {
 		int in_range = pen->in_range;
-		
-//		int hover = (in_range & !pen->contact);
-//		int tip = (in_range & pen->contact);
-//		int swit1 = (in_range & pen->swit1);
-//		int swit2 = (in_range & pen->swit2);
-//		ts->new_pen = (hover<<PEN_BIT_HOVER) | (tip<<PEN_BIT_TIP);
-//		ts->new_pen |= (swit1<<PEN_BIT_SWIT1) | (swit2<<PEN_BIT_SWIT2);
-
+		/*
+		int hover = (in_range & !pen->contact);
+		int tip = (in_range & pen->contact);
+		int swit1 = (in_range & pen->swit1);
+		int swit2 = (in_range & pen->swit2);
+		ts->new_pen = (hover<<PEN_BIT_HOVER) | (tip<<PEN_BIT_TIP);
+		ts->new_pen |= (swit1<<PEN_BIT_SWIT1) | (swit2<<PEN_BIT_SWIT2);
+*/
 		u32 aes_mode_bits = (d->info.tc_status & 0xe0000000) >> 29;
 		int aes_mode_1 = 1;
 		int aes_mode_2 = 2;
@@ -4584,7 +4451,7 @@ int sw42902_sub_irq_abs_data(struct device *dev)
 		}
 //		ts->intr_status |= TOUCH_IRQ_PEN;
 	}
-#endif
+
 
 	if (!touch_sub_count) {
 		goto out;
@@ -4597,17 +4464,6 @@ int sw42902_sub_irq_abs_data(struct device *dev)
 		if (data[0].event == TOUCHSTS_DOWN) {
 			ts->is_cancel = 1;
 			TOUCH_I("Palm Detected\n");
-#if 0
-			ret = sw42902_sub_reg_read(dev, DEBUG_PALM, debug_palm, sizeof(debug_palm));
-			if (ret < 0) {
-				TOUCH_E("Failed to read palm debugging");
-			} else {
-				TOUCH_I("Palm Debug(0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x)",
-						debug_palm[0], debug_palm[1], debug_palm[2], debug_palm[3],
-						debug_palm[4], debug_palm[5], debug_palm[6], debug_palm[7],
-						debug_palm[8], debug_palm[9], debug_palm[10]);
-			}
-#endif
 		} else if (data[0].event == TOUCHSTS_UP) {
 			ts->is_cancel = 0;
 			TOUCH_I("Palm Released\n");
@@ -4651,33 +4507,12 @@ int sw42902_sub_irq_abs_data(struct device *dev)
 					tdata->width_major,
 					tdata->width_minor,
 					tdata->orientation);
-#if 0
+
 			if (d->lpwg_abs.enable)
 				sw42902_lpwg_abs_filter(dev, tdata->id);
-#endif
-#if 0
-		}else if (data[i].event == TOUCHSTS_UP) {
-			if ( data[i].pressure == 255 ) {
-				if (ts->old_mask & (1 << i)) {
-					input_mt_slot(ts->input, i);
-					input_mt_report_slot_state(ts->input, MT_TOOL_FINGER, true);
-					input_report_key(ts->input, BTN_TOUCH, 1);
-					input_report_key(ts->input, BTN_TOOL_FINGER, 1);
-					input_report_abs(ts->input, ABS_MT_PRESSURE, 255);
-
-					force_cancel_mask |= (1 << i);
-				}
-			}
-#endif
 		}
 	}
-#if 0
-	if (force_cancel_mask) {
-			input_sync(ts->input);
-//			touch_sub_msleep(1);
-			TOUCH_I("cancel force_cancel_mask : %d", force_cancel_mask);
-	}
-#endif
+
 	ts->tcount = finger_index;
 	ts->intr_status |= TOUCH_IRQ_FINGER;
 
@@ -4718,7 +4553,7 @@ int sw42902_sub_irq_lpwg(struct device *dev)
 	case KNOCK_ON:
 		sw42902_get_tci_data(dev, ts->tci.info[TCI_1].tap_count);
 		ts->intr_status = TOUCH_IRQ_KNOCK;
-#if 0
+
 		if (d->ai_pick.enable) {
 			if (sw42902_check_ai_pick_event(dev)) {
 				ts->intr_status = TOUCH_IRQ_AI_PICK;
@@ -4730,9 +4565,8 @@ int sw42902_sub_irq_lpwg(struct device *dev)
 				}
 			}
 		}
-#endif
 		break;
-#if 0
+
 	case KNOCK_CODE:
 		if (ts->lpwg.mode >= LPWG_PASSWORD) {
 			sw42902_get_tci_data(dev,
@@ -4841,7 +4675,7 @@ int sw42902_sub_irq_lpwg(struct device *dev)
 		TOUCH_I("LPWG wakeup_type is PEN_WAKEUP_BTN:%d\n", type);
 		ts->intr_status = TOUCH_IRQ_PEN_WAKEUP_BTN;
 		break;
-#endif
+
 	default:
 		TOUCH_I("LPWG wakeup_type is not support type![%d]\n",
 				d->info.wakeup_type);
@@ -5085,7 +4919,7 @@ static ssize_t store_lpwg_failreason(struct device *dev, const char *buf, size_t
 
 	return count;
 }
-#if 0
+
 static ssize_t show_lpwg_abs(struct device *dev, char *buf)
 {
 	struct sw42902_data *d = to_sw49202_data(dev);
@@ -5257,7 +5091,6 @@ static ssize_t store_ai_pick(struct device *dev,
 
 	return count;
 }
-#endif
 static ssize_t store_reset_ctrl(struct device *dev, const char *buf,
 		size_t count)
 {
@@ -5375,7 +5208,7 @@ out:
 	mutex_unlock(&ts->lock);
 	return count;
 }
-#if 0
+
 static ssize_t show_longpress(struct device *dev, char *buf)
 {
 	struct sw42902_data *d = to_sw49202_data(dev);
@@ -5568,7 +5401,7 @@ static ssize_t store_predic_filter(struct device *dev,
 
 	return count;
 }
-#endif
+
 static ssize_t show_fw_check(struct device *dev, char *buf)
 {
 	struct sw42902_data *d = to_sw49202_data(dev);
@@ -5581,7 +5414,7 @@ static ssize_t show_fw_check(struct device *dev, char *buf)
 
 	return ret;
 }
-#if 0
+
 static ssize_t show_aes_mode(struct device *dev, char *buf)
 {
 	struct touch_sub_core_data *ts = to_touch_sub_core(dev);
@@ -5657,7 +5490,7 @@ static ssize_t show_ds_update_state(struct device *dev, char *buf)
 
 	return ret;
 }
-#endif
+
 /*
 static ssize_t store_burst_test(struct device *dev, const char *buf,
 		size_t count)
@@ -5723,38 +5556,38 @@ static ssize_t show_gpio_pin(struct device *dev, char *buf)
 	return ret;
 }
 
-//static TOUCH_ATTR(lpwg_abs, show_lpwg_abs, store_lpwg_abs);
+static TOUCH_ATTR(lpwg_abs, show_lpwg_abs, store_lpwg_abs);
 static TOUCH_ATTR(reg_ctrl, NULL, store_reg_ctrl);
 static TOUCH_ATTR(lpwg_failreason, show_lpwg_failreason, store_lpwg_failreason);
 static TOUCH_ATTR(reset_ctrl, NULL, store_reset_ctrl);
 static TOUCH_ATTR(power_ctrl, NULL, store_power_ctrl);
 static TOUCH_ATTR(grip_suppression, show_grip_suppression, store_grip_suppression);
 static TOUCH_ATTR(q_sensitivity, NULL, store_q_sensitivity);
-//static TOUCH_ATTR(ai_pick, show_ai_pick, store_ai_pick);
-//static TOUCH_ATTR(longpress, show_longpress, store_longpress);
-//static TOUCH_ATTR(onetap, show_onetap, store_onetap);
-//static TOUCH_ATTR(prediction_filter, show_predic_filter, store_predic_filter);
+static TOUCH_ATTR(ai_pick, show_ai_pick, store_ai_pick);
+static TOUCH_ATTR(longpress, show_longpress, store_longpress);
+static TOUCH_ATTR(onetap, show_onetap, store_onetap);
+static TOUCH_ATTR(prediction_filter, show_predic_filter, store_predic_filter);
 static TOUCH_ATTR(fw_check, show_fw_check, NULL);
-//static TOUCH_ATTR(aes_mode, show_aes_mode, store_aes_mode);
-//static TOUCH_ATTR(ds_update_state, show_ds_update_state, NULL);
+static TOUCH_ATTR(aes_mode, show_aes_mode, store_aes_mode);
+static TOUCH_ATTR(ds_update_state, show_ds_update_state, NULL);
 static TOUCH_ATTR(gpio_pin, show_gpio_pin, NULL);
 //static TOUCH_ATTR(burst_test, NULL, store_burst_test);
 
 static struct attribute *sw42902_attribute_list[] = {
 	&touch_sub_attr_reg_ctrl.attr,
 	&touch_sub_attr_lpwg_failreason.attr,
-//	&touch_sub_attr_lpwg_abs.attr,
+	&touch_sub_attr_lpwg_abs.attr,
 	&touch_sub_attr_reset_ctrl.attr,
 	&touch_sub_attr_power_ctrl.attr,
 	&touch_sub_attr_grip_suppression.attr,
 	&touch_sub_attr_q_sensitivity.attr,
-//	&touch_sub_attr_ai_pick.attr,
-//	&touch_sub_attr_longpress.attr,
-//	&touch_sub_attr_onetap.attr,
-//	&touch_sub_attr_prediction_filter.attr,
+	&touch_sub_attr_ai_pick.attr,
+	&touch_sub_attr_longpress.attr,
+	&touch_sub_attr_onetap.attr,
+	&touch_sub_attr_prediction_filter.attr,
 	&touch_sub_attr_fw_check.attr,
-//	&touch_sub_attr_aes_mode.attr,
-//	&touch_sub_attr_ds_update_state.attr,
+	&touch_sub_attr_aes_mode.attr,
+	&touch_sub_attr_ds_update_state.attr,
 	&touch_sub_attr_gpio_pin.attr,
 //	&touch_sub_attr_burst_test.attr,
 	NULL,
@@ -5800,7 +5633,15 @@ static int sw42902_get_cmd_version(struct device *dev, char *buf)
 {
 	struct sw42902_data *d = to_sw49202_data(dev);
 	int offset = 0;
+	int ret = 0;
 
+	ret = sw42902_sub_ic_info(dev);
+	if (ret < 0) {
+		offset += snprintf(buf + offset, PAGE_SIZE, "-1\n");
+		offset += snprintf(buf + offset, PAGE_SIZE - offset,
+				"Read Fail Touch IC Info\n");
+		return offset;
+	}
 	offset += snprintf(buf + offset, PAGE_SIZE - offset, "=== ic_fw_version info ===\n");
 	offset += snprintf(buf + offset, PAGE_SIZE - offset, "version : v%d.%02d\n",
 			d->ic_info.version.major, d->ic_info.version.minor);
@@ -5827,7 +5668,15 @@ static int sw42902_get_cmd_atcmd_version(struct device *dev, char *buf)
 {
 	struct sw42902_data *d = to_sw49202_data(dev);
 	int offset = 0;
+	int ret = 0;
 
+	ret = sw42902_sub_ic_info(dev);
+	if (ret < 0) {
+		offset += snprintf(buf + offset, PAGE_SIZE, "-1\n");
+		offset += snprintf(buf + offset, PAGE_SIZE - offset,
+				"Read Fail Touch IC Info\n");
+		return offset;
+	}
 
 	offset = snprintf(buf, PAGE_SIZE, "v%d.%02d\n", d->ic_info.version.major, d->ic_info.version.minor);
 
@@ -5862,7 +5711,7 @@ static int sw42902_get(struct device *dev, u32 cmd, void *input, void *output)
 
 	return ret;
 }
-#ifdef CONFIG_LGE_TOUCH_SUB_PEN
+#ifdef CONFIG_LGE_TOUCH_PEN
 static int sw42902_pen(struct device *dev, void *touch_sub_core_data, void *data, int control)
 {
 	struct touch_sub_core_data *ts = (struct touch_sub_core_data *)touch_sub_core_data;
@@ -5925,18 +5774,15 @@ static struct touch_sub_driver touch_sub_driver = {
 	.irq_handler = sw42902_sub_irq_handler,
 	.power = sw42902_power,
 	.upgrade = sw42902_upgrade,
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-	.app_upgrade = sw42902_app_upgrade,
-#endif
 	.esd_recovery = sw42902_esd_recovery,
-//	.swipe_enable = sw42902_swipe_enable,
+	.swipe_enable = sw42902_swipe_enable,
 	.lpwg = sw42902_lpwg,
 	.notify = sw42902_notify,
 	.init_pm = sw42902_init_pm,
 	.register_sysfs = sw42902_register_sysfs,
 	.set = sw42902_set,
 	.get = sw42902_get,
-#ifdef CONFIG_LGE_TOUCH_SUB_PEN
+#ifdef CONFIG_LGE_TOUCH_PEN
 	.pen_func = sw42902_pen,
 	.stop_pen_sensing = sw42902_stop_pen_sensing,
 #endif

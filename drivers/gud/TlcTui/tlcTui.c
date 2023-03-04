@@ -42,8 +42,6 @@ struct tlc_tui_response_t g_user_rsp = {.id = TLC_TUI_CMD_NONE,
 				.return_code = TLC_TUI_ERR_UNKNOWN_CMD};
 static bool g_dci_version_checked;
 
-extern atomic_t tui_cancel_event_procession;
-
 /* Functions */
 
 /* ------------------------------------------------------------- */
@@ -400,10 +398,6 @@ bool tlc_notify_event(u32 event_type)
 		pr_warn("%s: DCI has not been set up properly - exiting\n",
 			__func__);
 		return false;
-	}
-
-	if (event_type == NOT_TUI_CANCEL_EVENT) {
-		atomic_set(&tui_cancel_event_procession, 1);
 	}
 
 	/* Prepare notification message in DCI */

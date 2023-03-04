@@ -3,4 +3,4 @@
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
  */
 
-#include "../lito-winglm_common/lito-winglm_common-coverhallic.dtsi"
+//#include "../lito-winglm_common/lito-winglm_common-coverhallic.dtsi"

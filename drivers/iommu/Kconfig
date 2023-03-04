@@ -495,7 +495,6 @@ config MTK_IOMMU_V1
 
 menuconfig IOMMU_DEBUG
 	bool "IOMMU Profiling and Debugging"
-	depends on DEBUG_FS
 	select IOMMU_DEBUGFS
 	help
 	  This option is used to enable profiling and debugging in

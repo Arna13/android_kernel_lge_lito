@@ -441,10 +441,6 @@
 	qcom,dsi-default-panel = <&dsi_sw43103_fhd_dsc_cmd>;
 };
 
-&sde_dsi1 {
-	status = "disabled";
-};
-
 &mdss_dsi1 {
 	status = "disabled";
 };

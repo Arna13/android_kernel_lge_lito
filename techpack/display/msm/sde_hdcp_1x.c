@@ -1057,10 +1057,8 @@ static void sde_hdcp_1x_auth_work(struct work_struct *work)
 		return;
 	}
 
-	if (atomic_read(&hdcp->abort)) {
-		rc = -EINVAL;
+	if (atomic_read(&hdcp->abort))
 		goto end;
-	}
 
 	hdcp->sink_r0_ready = false;
 	hdcp->reauth = false;
@@ -1497,8 +1495,6 @@ static void sde_hdcp_1x_abort(void *data, bool abort)
 	atomic_set(&hdcp->abort, abort);
 	cancel_delayed_work_sync(&hdcp->hdcp_auth_work);
 	flush_workqueue(hdcp->workq);
-	if (sde_hdcp_1x_state(HDCP_STATE_AUTHENTICATING))
-		hdcp->hdcp_state = HDCP_STATE_AUTH_FAIL;
 }
 
 void *sde_hdcp_1x_init(struct sde_hdcp_init_data *init_data)

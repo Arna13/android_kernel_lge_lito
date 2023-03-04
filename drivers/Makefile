@@ -198,5 +198,3 @@ ifeq ($(CONFIG_TRUSTONIC_TEE),y)
 obj-$(CONFIG_TRUSTONIC_TEE) += gud/
 endif
 
-# Motor
-obj-$(CONFIG_LGE_MOTORS)              += motors/

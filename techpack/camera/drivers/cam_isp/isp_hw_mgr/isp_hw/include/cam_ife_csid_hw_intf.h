@@ -124,8 +124,6 @@ struct cam_isp_in_port_generic_info {
  * @node_res :    Reserved resource structure pointer
  * @crop_enable : Flag to indicate CSID crop enable
  * @drop_enable : Flag to indicate CSID drop enable
- * @priv:         private data to be sent in callback
- * @event_cb:     CSID event callback to hw manager
  *
  */
 struct cam_csid_hw_reserve_resource_args {
@@ -139,8 +137,6 @@ struct cam_csid_hw_reserve_resource_args {
 	struct cam_isp_resource_node             *node_res;
 	bool                                      crop_enable;
 	bool                                      drop_enable;
-	void                                     *priv;
-	cam_hw_mgr_event_cb_func                  event_cb;
 };
 
 /**
@@ -151,33 +147,6 @@ enum cam_ife_csid_halt_cmd {
 	CAM_CSID_RESUME_AT_FRAME_BOUNDARY,
 	CAM_CSID_HALT_IMMEDIATELY,
 	CAM_CSID_HALT_MAX,
-};
-
-/**
- *  enum cam_ife_csid_halt_mode_cmd - Specify the halt command type
- */
-enum cam_ife_csid_halt_mode {
-	CAM_CSID_HALT_MODE_INTERNAL,
-	CAM_CSID_HALT_MODE_GLOBAL,
-	CAM_CSID_HALT_MODE_MASTER,
-	CAM_CSID_HALT_MODE_SLAVE,
-	CAM_CSID_HALT_MODE_MAX,
-};
-
-/**
- * struct cam_csid_hw_halt_args
- * @halt_mode : Applicable only for PATH resources
- * 0 Internal : The CSID responds to the HALT_CMD
- * 1 Global : The CSID responds to the GLOBAL_HALT_CMD
- * 2 Master : The CSID responds to the HALT_CMD
- * 3 Slave : The CSID responds to the external halt command
- * and not the HALT_CMD register
- * @node_res : reource pointer array( ie cid or CSID)
- *
- */
-struct cam_csid_hw_halt_args {
-	enum cam_ife_csid_halt_mode   halt_mode;
-	struct cam_isp_resource_node *node_res;
 };
 
 /**
@@ -237,7 +206,6 @@ enum cam_ife_csid_cmd_type {
 	CAM_IFE_CSID_SET_CSID_DEBUG,
 	CAM_IFE_CSID_SOF_IRQ_DEBUG,
 	CAM_IFE_CSID_SET_CONFIG,
-	CAM_IFE_CSID_SET_SENSOR_DIMENSION_CFG,
 	CAM_IFE_CSID_CMD_MAX,
 };
 
@@ -277,19 +245,6 @@ struct cam_ife_csid_qcfa_update_args {
  */
 struct cam_ife_csid_epd_update_args {
 	uint32_t                           epd_supported;
-};
-
-/*
- * struct cam_ife_sensor_dim_update_args:
- *
- * @ppp_path:             expected ppp path configuration
- * @ipp_path:             expected ipp path configuration
- * @rdi_path:             expected rdi path configuration
- */
-struct cam_ife_sensor_dimension_update_args {
-	struct cam_isp_sensor_dimension  ppp_path;
-	struct cam_isp_sensor_dimension  ipp_path;
-	struct cam_isp_sensor_dimension  rdi_path[CAM_IFE_CSID_RDI_MAX];
 };
 
 #endif /* _CAM_CSID_HW_INTF_H_ */

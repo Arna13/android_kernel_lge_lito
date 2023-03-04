@@ -22,13 +22,13 @@
 		pinctrl-names = "default", "sleep";
 		pinctrl-0 = <&almf04_int_active &almf04_en_active>;
 		pinctrl-1 = <&almf04_int_suspend &almf04_en_suspend>;
-		Adsemicon,vdd_ana-supply = <&pm8150_s4>;
+		//Adsemicon,vdd_ana-supply = <&pm8150_l8>;
 		Adsemicon,irq-gpio = <&tlmm 5 0x00>;	/* Interrupt Pin */
 		Adsemicon,vdd_ana_supply_min = <1800000>;
 		Adsemicon,vdd_ana_supply_max = <1800000>;
 		Adsemicon,vdd_ana_load_ua = <15000>;
 		Adsemicon,chip_enable = <&tlmm 21 0x00>;  /* enable pin */
 		Adsemicon,InputPinsNum = <1>;
-		Adsemicon,fw_name = "almf04/ALMF04_Sar3CH_NIT_V3.10T.fw";
+		Adsemicon,fw_name = "almf04/ALMF04_Sar2CNew_V2.03T.fw";
 	};
 };

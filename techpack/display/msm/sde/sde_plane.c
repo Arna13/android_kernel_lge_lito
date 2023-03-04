@@ -248,7 +248,6 @@ static void _sde_plane_set_qos_lut(struct drm_plane *plane,
 	u32 frame_rate, qos_count, fps_index = 0, lut_index, index;
 	struct sde_perf_cfg *perf;
 	struct sde_plane_state *pstate;
-	struct sde_kms *kms;
 
 	if (!plane || !fb) {
 		SDE_ERROR("invalid arguments\n");
@@ -257,11 +256,6 @@ static void _sde_plane_set_qos_lut(struct drm_plane *plane,
 
 	psde = to_sde_plane(plane);
 	pstate = to_sde_plane_state(plane->state);
-	kms = _sde_plane_get_kms(plane);
-	if (!kms) {
-		SDE_ERROR("invalid kms\n");
-		return;
-	}
 
 	if (!psde->pipe_hw || !psde->pipe_sblk || !psde->catalog) {
 		SDE_ERROR("invalid arguments\n");
@@ -288,12 +282,7 @@ static void _sde_plane_set_qos_lut(struct drm_plane *plane,
 				fb->format->format,
 				fb->modifier);
 
-		if (fmt && SDE_FORMAT_IS_LINEAR(fmt) &&
-			pstate->scaler3_cfg.enable &&
-			IS_SDE_MAJOR_MINOR_SAME(kms->catalog->hwversion,
-							 SDE_HW_VER_640))
-			lut_index = SDE_QOS_LUT_USAGE_MACROTILE_QSEED;
-		else if (fmt && SDE_FORMAT_IS_LINEAR(fmt))
+		if (fmt && SDE_FORMAT_IS_LINEAR(fmt))
 			lut_index = SDE_QOS_LUT_USAGE_LINEAR;
 		else if (pstate->scaler3_cfg.enable)
 			lut_index = SDE_QOS_LUT_USAGE_MACROTILE_QSEED;
@@ -2283,17 +2272,11 @@ static int _sde_atomic_check_pre_downscale(struct sde_plane *psde,
 	int ret = 0;
 	u32 min_ratio_numer, min_ratio_denom;
 	struct sde_hw_inline_pre_downscale_cfg *pd_cfg = &pstate->pre_down;
-	bool pd_x;
-	bool pd_y;
+	bool pd_x = pd_cfg->pre_downscale_x_0 > 1;
+	bool pd_y = pd_cfg->pre_downscale_y_0 > 1;
 
-	if (!_sde_plane_is_pre_downscale_enabled(pd_cfg))
-		return ret;
-
-	pd_x = pd_cfg->pre_downscale_x_0 > 1;
-	pd_y = pd_cfg->pre_downscale_y_0 > 1;
-
-	min_ratio_numer = psde->pipe_sblk->in_rot_maxdwnscale_rt_nopd_num;
-	min_ratio_denom = psde->pipe_sblk->in_rot_maxdwnscale_rt_nopd_denom;
+	min_ratio_numer = psde->pipe_sblk->in_rot_minpredwnscale_num;
+	min_ratio_denom = psde->pipe_sblk->in_rot_minpredwnscale_denom;
 
 	if (pd_x && !(_sde_plane_has_pre_downscale(psde))) {
 		SDE_ERROR_PLANE(psde,
@@ -2329,48 +2312,6 @@ static int _sde_atomic_check_pre_downscale(struct sde_plane *psde,
 	return ret;
 
 }
-
-static void _sde_plane_get_max_downscale_limits(struct sde_plane *psde,
-		struct sde_plane_state *pstate, bool rt_client,
-		u32 *max_numer_w, u32 *max_denom_w,
-		u32 *max_numer_h, u32 *max_denom_h)
-{
-	bool rotated, has_predown;
-	const struct sde_sspp_sub_blks *sblk;
-	struct sde_hw_inline_pre_downscale_cfg *pd;
-
-	rotated = pstate->rotation & DRM_MODE_ROTATE_90;
-	sblk = psde->pipe_sblk;
-	*max_numer_w = sblk->maxdwnscale;
-	*max_denom_w = 1;
-	*max_numer_h = sblk->maxdwnscale;
-	*max_denom_h = 1;
-
-	has_predown = _sde_plane_has_pre_downscale(psde);
-	if (has_predown)
-		pd = &pstate->pre_down;
-
-	/**
-	 * Inline rotation has different max vertical downscaling limits since
-	 * the source-width becomes the scaler's pre-downscaled source-height.
-	 **/
-	if (rotated) {
-		if (rt_client && has_predown) {
-			*max_numer_h = pd->pre_downscale_x_0 ?
-				sblk->in_rot_maxdwnscale_rt_num :
-				sblk->in_rot_maxdwnscale_rt_nopd_num;
-			*max_denom_h = pd->pre_downscale_x_0 ?
-				sblk->in_rot_maxdwnscale_rt_denom :
-				sblk->in_rot_maxdwnscale_rt_nopd_denom;
-		} else if (rt_client) {
-			*max_numer_h = sblk->in_rot_maxdwnscale_rt_num;
-			*max_denom_h = sblk->in_rot_maxdwnscale_rt_denom;
-		} else {
-			*max_numer_h = sblk->in_rot_maxdwnscale_nrt;
-		}
-	}
-}
-
 static int _sde_atomic_check_decimation_scaler(struct drm_plane_state *state,
 	struct sde_plane *psde, const struct sde_format *fmt,
 	struct sde_plane_state *pstate, struct sde_rect *src,
@@ -2379,14 +2320,12 @@ static int _sde_atomic_check_decimation_scaler(struct drm_plane_state *state,
 	int ret = 0;
 	uint32_t deci_w, deci_h, src_deci_w, src_deci_h;
 	uint32_t scaler_src_w, scaler_src_h;
-	uint32_t max_downscale_num_w, max_downscale_denom_w;
-	uint32_t max_downscale_num_h, max_downscale_denom_h;
+	uint32_t max_downscale_num, max_downscale_denom;
 	uint32_t max_upscale, max_linewidth = 0;
-	bool inline_rotation, rt_client;
+	bool inline_rotation, rt_client, has_predown, pre_down_en = false;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *new_cstate;
 	struct sde_kms *kms;
-	const struct sde_sspp_sub_blks *sblk;
 
 	if (!state || !state->state || !state->crtc) {
 		SDE_ERROR_PLANE(psde, "invalid arguments\n");
@@ -2416,7 +2355,6 @@ static int _sde_atomic_check_decimation_scaler(struct drm_plane_state *state,
 		scaler_src_h = src_deci_h;
 	}
 
-	sblk = psde->pipe_sblk;
 	max_upscale = psde->pipe_sblk->maxupscale;
 
 	if ((scaler_src_w != state->crtc_w) || (scaler_src_h != state->crtc_h))
@@ -2427,18 +2365,42 @@ static int _sde_atomic_check_decimation_scaler(struct drm_plane_state *state,
 	if (!max_linewidth)
 		max_linewidth = psde->pipe_sblk->maxlinewidth;
 
+	has_predown = _sde_plane_has_pre_downscale(psde);
+	if (has_predown)
+		pre_down_en = _sde_plane_is_pre_downscale_enabled(
+				&pstate->pre_down);
+
 	crtc = state->crtc;
 	new_cstate = drm_atomic_get_new_crtc_state(state->state, crtc);
+
 	rt_client = sde_crtc_is_rt_client(crtc, new_cstate);
 
-	_sde_plane_get_max_downscale_limits(psde, pstate, rt_client,
-		&max_downscale_num_w, &max_downscale_denom_w,
-		&max_downscale_num_h, &max_downscale_denom_h);
+	max_downscale_num = psde->pipe_sblk->maxdwnscale;
+	max_downscale_denom = 1;
+	/* inline rotation RT clients have a different max downscaling limit */
+	if (inline_rotation) {
+		if (rt_client && has_predown) {
+			max_downscale_num = pre_down_en ?
+				psde->pipe_sblk->in_rot_maxdwnscale_rt_num :
+				psde->pipe_sblk->in_rot_minpredwnscale_num;
+			max_downscale_denom = pre_down_en ?
+				psde->pipe_sblk->in_rot_maxdwnscale_rt_denom :
+				psde->pipe_sblk->in_rot_minpredwnscale_denom;
+		} else if (rt_client) {
+			max_downscale_num =
+				psde->pipe_sblk->in_rot_maxdwnscale_rt_num;
+			max_downscale_denom =
+				psde->pipe_sblk->in_rot_maxdwnscale_rt_denom;
+		} else {
+			max_downscale_num =
+				psde->pipe_sblk->in_rot_maxdwnscale_nrt;
+		}
+	}
 
 	/* decimation validation */
 	if ((deci_w || deci_h)
-			&& ((deci_w > sblk->maxhdeciexp)
-				|| (deci_h > sblk->maxvdeciexp))) {
+			&& ((deci_w > psde->pipe_sblk->maxhdeciexp)
+				|| (deci_h > psde->pipe_sblk->maxvdeciexp))) {
 		SDE_ERROR_PLANE(psde, "too much decimation requested\n");
 		ret = -EINVAL;
 
@@ -2464,21 +2426,21 @@ static int _sde_atomic_check_decimation_scaler(struct drm_plane_state *state,
 	/* check max scaler capability */
 	} else if (((scaler_src_w * max_upscale) < dst->w) ||
 		((scaler_src_h * max_upscale) < dst->h) ||
-		(mult_frac(dst->w, max_downscale_num_w, max_downscale_denom_w)
+		(mult_frac(dst->w, max_downscale_num, max_downscale_denom)
 			< scaler_src_w) ||
-		(mult_frac(dst->h, max_downscale_num_h, max_downscale_denom_h)
+		(mult_frac(dst->h, max_downscale_num, max_downscale_denom)
 			< scaler_src_h)) {
 		SDE_ERROR_PLANE(psde,
-			"too much scaling %ux%u->%ux%u rot:%d dwn:%d/%d %d/%d\n",
+			"too much scaling requested %ux%u->%ux%u rot:%d dwn:%d/%d\n",
 			scaler_src_w, scaler_src_h, dst->w, dst->h,
-			inline_rotation, max_downscale_num_w,
-			max_downscale_denom_w, max_downscale_num_h,
-			max_downscale_denom_h);
+			inline_rotation, max_downscale_num,
+			max_downscale_denom);
 		ret = -E2BIG;
 
 	/* check inline pre-downscale support */
-	} else if (inline_rotation && _sde_atomic_check_pre_downscale(psde,
-			 pstate, dst, src_deci_w, src_deci_h)) {
+	} else if (inline_rotation && pre_down_en &&
+		_sde_atomic_check_pre_downscale(psde, pstate, dst,
+				src_deci_w, src_deci_h)) {
 		ret = -EINVAL;
 
 	/* QSEED validation */
@@ -2648,12 +2610,7 @@ static int sde_plane_sspp_atomic_check(struct drm_plane *plane,
 		SDE_ERROR_PLANE(psde, "invalid dest rect %u, %u, %ux%u\n",
 				dst.x, dst.y, dst.w, dst.h);
 		ret = -EINVAL;
-	} else if (SDE_FORMAT_IS_UBWC(fmt) &&
-		!psde->catalog->ubwc_version) {
-		SDE_ERROR_PLANE(psde, "ubwc not supported\n");
-		ret = -EINVAL;
 	}
-
 
 	if (ret)
 		return ret;
@@ -2854,10 +2811,7 @@ static void _sde_plane_setup_uidle(struct drm_crtc *crtc,
 	struct sde_rect *src, struct sde_rect *dst)
 {
 	struct sde_hw_pipe_uidle_cfg cfg;
-	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
-
-	u32 line_time = sde_get_linetime(&crtc->mode,
-			sde_crtc->comp_ratio); /* nS */
+	u32 line_time = sde_get_linetime(&crtc->mode); /* nS */
 	u32 fal1_target_idle_time_ns =
 		psde->catalog->uidle_cfg.fal1_target_idle_time * 1000; /* nS */
 	u32 fal10_target_idle_time_ns =

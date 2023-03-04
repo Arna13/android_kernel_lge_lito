@@ -452,9 +452,7 @@ struct fsg_common {
 	char inquiry_string[INQUIRY_STRING_LEN];
 #ifdef CONFIG_LGE_USB_GADGET_AUTORUN
 	/* LGE-customized USB mode */
-	enum chg_mode_state	mode_state;
-
-	struct delayed_work	eject_w;
+	enum chg_mode_state mode_state;
 #endif
 };
 
@@ -474,19 +472,6 @@ struct fsg_dev {
 	struct usb_ep		*bulk_in;
 	struct usb_ep		*bulk_out;
 };
-
-#ifdef CONFIG_LGE_USB_GADGET_AUTORUN
-static void eject_work(struct work_struct *w)
-{
-	struct fsg_common *common = container_of(w, struct fsg_common,
-			eject_w.work);
-	struct usb_gadget_driver *gdriver =
-			&common->cdev->driver->gadget_driver;
-
-	if (gdriver->disconnect)
-		gdriver->disconnect(common->gadget);
-}
-#endif
 
 static inline int __fsg_is_set(struct fsg_common *common,
 			       const char *func, unsigned line)
@@ -2129,7 +2114,7 @@ static int do_scsi_command(struct fsg_common *common)
 
 #ifdef CONFIG_LGE_USB_GADGET_AUTORUN
 	case SC_LGE_SPE:
-		pr_info("%s: SC_LGE_SPE - %x %x %x\n", __func__,
+		pr_info("%s : SC_LGE_SPE - %x %x %x\n", __func__,
 			  common->cmnd[0], common->cmnd[1], common->cmnd[2]);
 
 		common->mode_state = MODE_STATE_UNKNOWN;
@@ -2191,7 +2176,6 @@ static int do_scsi_command(struct fsg_common *common)
 			kobject_uevent_env(&autorun_device.this_device->kobj,
 				KOBJ_CHANGE, (char **)(&envp_mode[common->mode_state]));
 #endif
-			schedule_delayed_work(&common->eject_w, msecs_to_jiffies(100));
 			already_acked = 0;
 			reply = 0;
 			break;
@@ -2416,10 +2400,6 @@ static int do_scsi_command(struct fsg_common *common)
 				      "START-STOP UNIT");
 		if (reply == 0)
 			reply = do_start_stop(common);
-#ifdef CONFIG_LGE_USB_GADGET_AUTORUN
-		pr_info("%s: START_STOP\n", __func__);
-		schedule_delayed_work(&common->eject_w, msecs_to_jiffies(100));
-#endif
 		break;
 
 	case SYNCHRONIZE_CACHE:
@@ -3444,8 +3424,6 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 			goto autoconf_fail;
 		}
 	}
-
-	INIT_DELAYED_WORK(&common->eject_w, eject_work);
 #endif
 
 	return 0;
@@ -3479,8 +3457,6 @@ static void fsg_unbind(struct usb_configuration *c, struct usb_function *f)
 	usb_free_all_descriptors(&fsg->function);
 
 #ifdef CONFIG_LGE_USB_GADGET_AUTORUN
-	cancel_delayed_work(&common->eject_w);
-
 	/* if fsg common object is cdrom, deregister autorun misc device */
 	if (common->luns[common->lun]->cdrom)
 		misc_deregister(&autorun_device);

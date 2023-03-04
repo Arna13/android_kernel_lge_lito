@@ -29,6 +29,10 @@
 #include <net/tcp.h>
 #include <net/sock_reuseport.h>
 
+/* 2019-09-17 yunsik.lee@lge.com LGP_DATA_KERNEL_CRASHFIX_TCP_NUKE_ADDR [START] */
+#include <net/patchcodeid.h>
+/* 2019-09-17 yunsik.lee@lge.com LGP_DATA_KERNEL_CRASHFIX_TCP_NUKE_ADDR [START] */
+
 static u32 inet_ehashfn(const struct net *net, const __be32 laddr,
 			const __u16 lport, const __be32 faddr,
 			const __be16 fport)
@@ -115,6 +119,12 @@ static void __inet_put_port(struct sock *sk)
 	__sk_del_bind_node(sk);
 	inet_csk(sk)->icsk_bind_hash = NULL;
 	inet_sk(sk)->inet_num = 0;
+	/* 2015-08-13 jewon.lee@lge.com LGP_DATA_KERNEL_CRASHFIX_TCP_NUKE_ADDR [START] */
+	patch_code_id("LPCP-1297@n@c@vmlinux@inet_hashtables.c@1");
+	// In kernel version 4.14 or above, patchcodeid#1 is no longer needed.
+	patch_code_id("LPCP-1297@n@c@vmlinux@inet_hashtables.c@2");
+	if (tb)
+	/* 2015-08-13 jewon.lee@lge.com LGP_DATA_KERNEL_CRASHFIX_TCP_NUKE_ADDR [END] */
 	inet_bind_bucket_destroy(hashinfo->bind_bucket_cachep, tb);
 	spin_unlock(&head->lock);
 }
@@ -248,7 +258,7 @@ static inline int compute_score(struct sock *sk, struct net *net,
 			if (sk->sk_bound_dev_if)
 				score += 4;
 		}
-		if (READ_ONCE(sk->sk_incoming_cpu) == raw_smp_processor_id())
+		if (sk->sk_incoming_cpu == raw_smp_processor_id())
 			score++;
 	}
 	return score;
@@ -308,7 +318,6 @@ struct sock *__inet_lookup_listener(struct net *net,
 	bool exact_dif = inet_exact_dif_match(net, skb);
 	struct inet_listen_hashbucket *ilb2;
 	struct sock *sk, *result = NULL;
-	struct hlist_nulls_node *node;
 	int score, hiscore = 0;
 	unsigned int hash2;
 	u32 phash = 0;
@@ -344,7 +353,7 @@ struct sock *__inet_lookup_listener(struct net *net,
 	goto done;
 
 port_lookup:
-	sk_nulls_for_each_rcu(sk, node, &ilb->nulls_head) {
+	sk_for_each_rcu(sk, &ilb->head) {
 		score = compute_score(sk, net, hnum, daddr,
 				      dif, sdif, exact_dif);
 		if (score > hiscore) {
@@ -561,11 +570,10 @@ static int inet_reuseport_add_sock(struct sock *sk,
 				   struct inet_listen_hashbucket *ilb)
 {
 	struct inet_bind_bucket *tb = inet_csk(sk)->icsk_bind_hash;
-	const struct hlist_nulls_node *node;
 	struct sock *sk2;
 	kuid_t uid = sock_i_uid(sk);
 
-	sk_nulls_for_each_rcu(sk2, node, &ilb->nulls_head) {
+	sk_for_each_rcu(sk2, &ilb->head) {
 		if (sk2 != sk &&
 		    sk2->sk_family == sk->sk_family &&
 		    ipv6_only_sock(sk2) == ipv6_only_sock(sk) &&
@@ -601,9 +609,9 @@ int __inet_hash(struct sock *sk, struct sock *osk)
 	}
 	if (IS_ENABLED(CONFIG_IPV6) && sk->sk_reuseport &&
 		sk->sk_family == AF_INET6)
-		__sk_nulls_add_node_tail_rcu(sk, &ilb->nulls_head);
+		hlist_add_tail_rcu(&sk->sk_node, &ilb->head);
 	else
-		__sk_nulls_add_node_rcu(sk, &ilb->nulls_head);
+		hlist_add_head_rcu(&sk->sk_node, &ilb->head);
 	inet_hash2(hashinfo, sk);
 	ilb->count++;
 	sock_set_flag(sk, SOCK_RCU_FREE);
@@ -652,9 +660,11 @@ void inet_unhash(struct sock *sk)
 		reuseport_detach_sock(sk);
 	if (ilb) {
 		inet_unhash2(hashinfo, sk);
-		ilb->count--;
+		 __sk_del_node_init(sk);
+		 ilb->count--;
+	} else {
+		__sk_nulls_del_node_init_rcu(sk);
 	}
-	__sk_nulls_del_node_init_rcu(sk);
 	sock_prot_inuse_add(sock_net(sk), sk->sk_prot, -1);
 unlock:
 	spin_unlock_bh(lock);
@@ -790,8 +800,7 @@ void inet_hashinfo_init(struct inet_hashinfo *h)
 
 	for (i = 0; i < INET_LHTABLE_SIZE; i++) {
 		spin_lock_init(&h->listening_hash[i].lock);
-		INIT_HLIST_NULLS_HEAD(&h->listening_hash[i].nulls_head,
-				      i + LISTENING_NULLS_BASE);
+		INIT_HLIST_HEAD(&h->listening_hash[i].head);
 		h->listening_hash[i].count = 0;
 	}
 

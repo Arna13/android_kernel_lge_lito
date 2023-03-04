@@ -884,13 +884,6 @@ static void lge_set_video_enhancement_sw43410(struct dsi_panel *panel, int input
 {
 	int rc = 0;
 	bool enable = false;
-	struct backlight_device *bd;
-
-	if (!panel->bl_config.raw_bd) {
-		pr_err("backlight device is NULL\n");
-		return;
-	}
-	bd = panel->bl_config.raw_bd;
 
 	mutex_lock(&panel->panel_lock);
 
@@ -917,9 +910,8 @@ static void lge_set_video_enhancement_sw43410(struct dsi_panel *panel, int input
 	pr_info("send cmds to %s the video enhancer \n",
 		(input == true) ? "enable" : "disable");
 
-	mutex_lock(&bd->ops_lock);
 	lge_backlight_device_update_status(panel->bl_config.raw_bd);
-	mutex_unlock(&bd->ops_lock);
+
 }
 
 static int set_pps_cmds_sw43410(struct dsi_panel *panel, enum lge_ddic_dsi_cmd_set_type type)
@@ -1098,13 +1090,6 @@ int lge_set_irc_default_state_sw43410(struct dsi_panel *panel)
 int hdr_mode_set_sw43410(struct dsi_panel *panel, int input)
 {
 	bool hdr_mode = ((input > 0) ? true : false);
-	struct backlight_device *bd;
-
-	if (!panel->bl_config.raw_bd) {
-		pr_err("backlight device is NULL\n");
-		return -EINVAL;
-	}
-	bd = panel->bl_config.raw_bd;
 
 	mutex_lock(&panel->panel_lock);
 	if (hdr_mode) {
@@ -1154,9 +1139,8 @@ int hdr_mode_set_sw43410(struct dsi_panel *panel, int input)
 		}
 	}
 
-	mutex_lock(&bd->ops_lock);
 	lge_backlight_device_update_status(panel->bl_config.raw_bd);
-	mutex_unlock(&bd->ops_lock);
+
 	return 0;
 }
 

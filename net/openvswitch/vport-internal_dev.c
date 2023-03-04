@@ -43,8 +43,7 @@ static struct internal_dev *internal_dev_priv(struct net_device *netdev)
 }
 
 /* Called with rcu_read_lock_bh. */
-static netdev_tx_t
-internal_dev_xmit(struct sk_buff *skb, struct net_device *netdev)
+static int internal_dev_xmit(struct sk_buff *skb, struct net_device *netdev)
 {
 	int len, err;
 
@@ -63,7 +62,7 @@ internal_dev_xmit(struct sk_buff *skb, struct net_device *netdev)
 	} else {
 		netdev->stats.tx_errors++;
 	}
-	return NETDEV_TX_OK;
+	return 0;
 }
 
 static int internal_dev_open(struct net_device *netdev)
@@ -150,7 +149,7 @@ static void do_setup(struct net_device *netdev)
 	netdev->priv_flags |= IFF_LIVE_ADDR_CHANGE | IFF_OPENVSWITCH |
 			      IFF_NO_QUEUE;
 	netdev->needs_free_netdev = true;
-	netdev->priv_destructor = NULL;
+	netdev->priv_destructor = internal_dev_destructor;
 	netdev->ethtool_ops = &internal_dev_ethtool_ops;
 	netdev->rtnl_link_ops = &internal_dev_link_ops;
 
@@ -172,6 +171,7 @@ static struct vport *internal_dev_create(const struct vport_parms *parms)
 	struct internal_dev *internal_dev;
 	struct net_device *dev;
 	int err;
+	bool free_vport = true;
 
 	vport = ovs_vport_alloc(0, &ovs_internal_vport_ops, parms);
 	if (IS_ERR(vport)) {
@@ -202,9 +202,10 @@ static struct vport *internal_dev_create(const struct vport_parms *parms)
 
 	rtnl_lock();
 	err = register_netdevice(vport->dev);
-	if (err)
+	if (err) {
+		free_vport = false;
 		goto error_unlock;
-	vport->dev->priv_destructor = internal_dev_destructor;
+	}
 
 	dev_set_promiscuity(vport->dev, 1);
 	rtnl_unlock();
@@ -218,7 +219,8 @@ error_unlock:
 error_free_netdev:
 	free_netdev(dev);
 error_free_vport:
-	ovs_vport_free(vport);
+	if (free_vport)
+		ovs_vport_free(vport);
 error:
 	return ERR_PTR(err);
 }

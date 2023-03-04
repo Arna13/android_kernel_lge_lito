@@ -64,8 +64,6 @@ static struct tui_hal_ts_context {
 						const char *buf, size_t count);
 } ts_ctx;
 
-atomic_t tui_cancel_event_procession;
-
 int register_tui_hal_ts(struct device *dev,
 			atomic_t *st_enabled,
 			struct completion *st_irq_received,
@@ -557,8 +555,6 @@ int forward_irq_thread_fn(void *data)
 #ifdef SECURE_INPUT
 int forward_irq_thread_fn(void *data)
 {
-	atomic_set(&tui_cancel_event_procession, 0);
-
 	pr_info("from irq kthread secure touch IRQ\n");
 	while (1) {
 		pr_info("NWd waiting for TUI event\n");
@@ -567,7 +563,6 @@ int forward_irq_thread_fn(void *data)
 
 		if (atomic_read(ts_ctx.st_enabled) == 0) {
 			pr_info("exit due to secure_touch is disabled\n");
-			atomic_set(&tui_cancel_event_procession, 0);
 			do_exit(0);
 		}
 
@@ -578,31 +573,24 @@ int forward_irq_thread_fn(void *data)
 
 			if (i < 0) {
 				pr_err("secure_get_irq returned %d\n", i);
-				if (-EBADF == i) {
-					atomic_set(&tui_cancel_event_procession, 0);
+				if (-EBADF == i)
 					do_exit(0);
-				}
-				else if (-EINVAL == i) {
+				else if (-EINVAL == i)
 					tlc_notify_event(1);
-				}
 				break;
 			}
 
-			if (atomic_read(&tui_cancel_event_procession) == 0) {
-				pr_info("NWd: i is %d\n", i);
-				/* forward the notification to the SWd and wait for the
-				* answer
-				*/
-				reinit_completion(&swd_completed);
-				dci->hal_rsp = 0;
-				notify_touch_event();
-				while (!dci->hal_rsp && atomic_read(ts_ctx.st_enabled))
-					wait_for_completion(&swd_completed);
-				pr_info("NWd: event has been handled by the SWd\n");
-			}
-			else {
-				pr_info("NWd: tui_cancel_event_procession = true\n");
-			}
+			pr_info("NWd: i is %d\n", i);
+			/* forward the notification to the SWd and wait for the
+			 * answer
+			 */
+			reinit_completion(&swd_completed);
+			dci->hal_rsp = 0;
+			notify_touch_event();
+			while (!dci->hal_rsp && atomic_read(ts_ctx.st_enabled))
+				wait_for_completion(&swd_completed);
+
+			pr_info("NWd: event has been handled by the SWd\n");
 		}
 	}
 }

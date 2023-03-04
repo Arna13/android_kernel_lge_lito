@@ -281,7 +281,6 @@ static int proc_dointvec_minmax_bpf_enable(struct ctl_table *table, int write,
 	return ret;
 }
 
-# ifdef CONFIG_HAVE_EBPF_JIT
 static int
 proc_dointvec_minmax_bpf_restricted(struct ctl_table *table, int write,
 				    void __user *buffer, size_t *lenp,
@@ -292,7 +291,6 @@ proc_dointvec_minmax_bpf_restricted(struct ctl_table *table, int write,
 
 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 }
-# endif /* CONFIG_HAVE_EBPF_JIT */
 
 static int
 proc_dolongvec_minmax_bpf_restricted(struct ctl_table *table, int write,
@@ -537,6 +535,22 @@ static struct ctl_table net_core_table[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &zero,
 	},
+    /* 2017-05-19 yunsik.lee@lge.com LGP_DATA_UDP_PREVENT_ICMPv6_WITH_CLAT_IID [START] */
+    {
+        .procname	= "clat_iid1",
+        .data		= &sysctl_clat_iid1,
+        .maxlen 	= sizeof(unsigned int),
+        .mode		= 0666,
+        .proc_handler	= proc_dointvec,
+    },
+    {
+        .procname	= "clat_iid2",
+        .data		= &sysctl_clat_iid2,
+        .maxlen 	= sizeof(unsigned int),
+        .mode		= 0666,
+        .proc_handler	= proc_dointvec,
+    },
+    /* 2017-05-19 yunsik.lee@lge.com LGP_DATA_UDP_PREVENT_ICMPv6_WITH_CLAT_IID [END] */
 	{
 		.procname	= "fb_tunnels_only_for_init_net",
 		.data		= &sysctl_fb_tunnels_only_for_init_net,

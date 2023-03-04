@@ -980,213 +980,6 @@ static void ufsdbg_print_ascii(struct seq_file *file, const char *prefix, struct
 		kfree(linebuf);
 }
 
-void ufsdbg_print_samsung_device_report_set_password(struct ufs_hba *hba)
-{
-	unsigned char set_pw_cmd[16] = {0,};
-
-	int err = 0;
-	struct scsi_sense_hdr sshdr;
-	struct scsi_device *sdev = NULL;
-
-	set_pw_cmd[0] = 0xC0;
-	set_pw_cmd[1] = 0x03;
-
-	set_pw_cmd[2] = 0x01;
-	set_pw_cmd[3] = 0x02;
-	set_pw_cmd[4] = 0x03;
-	set_pw_cmd[5] = 0x04;
-
-	// seems all general LU have the same record, so targeting to LUN0
-	sdev = scsi_device_lookup(hba->sdev_ufs_device->host, 0, 0, 0);
-	if (!sdev) {
-		pr_err("%s: fail to get lun0 device\n", __func__);
-		return;
-	}
-	//1. set password
-	err = scsi_execute_req(sdev, set_pw_cmd, DMA_NONE, NULL,
-				  0, &sshdr, 30 * HZ, 3, NULL);
-
-	scsi_device_put(sdev);
-
-	if (err) {
-		pr_err("%s: Password set fail to get device report for lun0 err=%d\n", __func__, err);
-		if (scsi_sense_valid(&sshdr)) {
-			pr_err("%s: sshdr : response_code(%d)/sense_key(%d)/asc(%d)/ascq(%d)\n", __func__,
-				sshdr.response_code, sshdr.sense_key, sshdr.asc, sshdr.ascq);
-		}
-	}
-
-}
-
-void ufsdbg_print_samsung_device_report_read(struct seq_file *file)
-{
-	#define CMD_LEN 16
-	#define SS_BUFFER_LEN	96
-	struct ufs_hba *hba = (struct ufs_hba *)file->private;
-	struct desc_field_offset *tmp;
-	unsigned char read_information_cmd[CMD_LEN] = {0,};
-	unsigned char vendor_enter_cmd[CMD_LEN] = {0,};
-	unsigned char vendor_exit_cmd[CMD_LEN] = {0,};
-	u8 *device_report_buf = 0;
-	int err = 0, i;
-	struct scsi_sense_hdr sshdr;
-	struct scsi_device *sdev = NULL;
-
-
-	struct desc_field_offset device_report_field_name[] = {
-		{"bLength",							0x00, DWORD},
-		{"bDescriptorType",					0x04, BYTE},
-		{"bSSRVersion",						0x06, WORD},
-		{"bMaximumEraseCycle(SLC)",			0x08, DWORD},
-		{"bMinimumEraseCycle(SLC)",			0x0C, DWORD},
-		{"bAverageEaseCycle(SLC)",			0x10, DWORD},
-		{"bMaximumEraseCycle(TLC)",			0x14, DWORD},
-		{"bMinimumEraseCycle(TLC)",			0x18, DWORD},
-		{"bAverageEaseCycle(TLC)",			0x1C, DWORD},
-		{"bMinimumBlockErase(TLC)",			0x10, DWORD},
-		{"bMaximumBlockErase(TLC)",			0x14, DWORD},
-		{"bAverageBlockErase(TLC)",			0x18, DWORD},
-		{"bReadReclaimCount",			   	0x20, DWORD},
-		{"bInitialBadBlock",				0x24, DWORD},
-		{"bRuntimeBadBlock",				0x28, DWORD},
-		{"bRemainReservedBlock",			0x2C, DWORD},
-		{"bReserved",						0x30, DWORD},
-		{"bReserved",						0x34, DWORD},
-		{"bWrittenData(10MB Unit)",			0x38, DWORD},
-		{"bOpenCount",						0x3C, DWORD},
-		{"bFirmwareSuccessCount",			0x40, DWORD},
-		{"bReserved",						0x44, DWORD},
-		{"bReserved",						0x48, DWORD},
-		{"bPON_InitializationCount",		0x4C, DWORD},
-		{"bSPOR_InitializationCount",		0x50, DWORD},
-		{"bReserved",						0x54, DWORD},
-	};
-
-	device_report_buf = kzalloc(SS_BUFFER_LEN, GFP_KERNEL);
-	if (!device_report_buf)
-		return;
-
-	memset(device_report_buf, 0x00, SS_BUFFER_LEN);
-
-	vendor_enter_cmd[0] = 0xC0;
-	vendor_enter_cmd[1] = 0x00;
-	vendor_enter_cmd[2] = 0x5C;
-	vendor_enter_cmd[3] = 0x38;
-	vendor_enter_cmd[4] = 0x23;
-	vendor_enter_cmd[5] = 0xAE;
-	vendor_enter_cmd[6] = 0x01;
-	vendor_enter_cmd[7] = 0x02;
-	vendor_enter_cmd[8] = 0x03;
-	vendor_enter_cmd[9] = 0x04;
-
-	vendor_exit_cmd[0] = 0xC0;
-	vendor_exit_cmd[1] = 0x01;
-
-	read_information_cmd[0] = 0xC0;
-	read_information_cmd[1] = 0x40;
-
-	read_information_cmd[4] = 0x01;
-	read_information_cmd[5] = 0x0A;
-
-	read_information_cmd[15] = 0x60;
-
-	// seems all general LU have the same record, so targeting to LUN0
-	sdev = scsi_device_lookup(hba->sdev_ufs_device->host, 0, 0, 0);
-	if (!sdev) {
-		pr_err("%s: fail to get lun0 device\n", __func__);
-		kfree(device_report_buf);
-		return;
-	}
-
-	//2. vendor mode enter
-    err = scsi_execute_req(sdev, vendor_enter_cmd, DMA_NONE, NULL,
-				  0, &sshdr, 30 * HZ, 3, NULL);
-
-	if (err) {
-		pr_err("%s: vendor mode enter fail to get device report for lun0 err=%d\n", __func__, err);
-		if (scsi_sense_valid(&sshdr)) {
-			pr_err("%s: sshdr : response_code(%d)/sense_key(%d)/asc(%d)/ascq(%d)\n", __func__,
-				sshdr.response_code, sshdr.sense_key, sshdr.asc, sshdr.ascq);
-		}
-		goto out_free;
-	}
-
-
-	//3. Nand information read
-	err = scsi_execute_req(sdev, read_information_cmd, DMA_FROM_DEVICE, device_report_buf,
-				  SS_BUFFER_LEN, &sshdr, 30 * HZ, 3, NULL);
-
-	if (err) {
-		pr_err("%s: 96 read fail to get device report for lun0 err=%d\n", __func__, err);
-		if (scsi_sense_valid(&sshdr)) {
-			pr_err("%s: sshdr : response_code(%d)/sense_key(%d)/asc(%d)/ascq(%d)\n", __func__,
-				sshdr.response_code, sshdr.sense_key, sshdr.asc, sshdr.ascq);
-		}
-
-	}
-
-	//4 vendor mode exit
-	err = scsi_execute_req(sdev, vendor_exit_cmd, DMA_NONE, NULL,
-				  0, &sshdr, 30 * HZ, 3, NULL);
-
-	if (err) {
-		pr_err("%s: vendor mode exit fail to get device report for lun0 err=%d\n", __func__, err);
-		if (scsi_sense_valid(&sshdr)) {
-			pr_err("%s: sshdr : response_code(%d)/sense_key(%d)/asc(%d)/ascq(%d)\n", __func__,
-				sshdr.response_code, sshdr.sense_key, sshdr.asc, sshdr.ascq);
-		}
-
-		goto out_free;
-	}
-
-	seq_printf(file,
-		"= = = = = = = = = = = = = = = = = = = = = = = = = = = = = =\n");
-
-	// seems little endian
-	for (i = 0; i < ARRAY_SIZE(device_report_field_name); ++i) {
-		u64 val = 0;
-
-		tmp = &device_report_field_name[i];
-
-		switch (tmp->width_byte) {
-			case BYTE:
-				val = (u8)device_report_buf[tmp->offset];
-				break;
-			case WORD:
-				val = (u16)get_unaligned_be16(&device_report_buf[tmp->offset]);
-				break;
-			case DWORD:
-				val = (u32)get_unaligned_be32(&device_report_buf[tmp->offset]);
-				break;
-			default:
-				break;
-		}
-
-		seq_printf(file,
-			"Samsung Device Report : [Byte offset 0x%02x]: %s = 0x%llx\n",
-			tmp->offset,
-			tmp->name,
-			val);
-	}
-
-out_free:
-	scsi_device_put(sdev);
-	if (device_report_buf)
-		kfree(device_report_buf);
-
-}
-
-static void ufsdbg_print_samsung_device_report(struct seq_file *file, void *data)
-{
-	struct ufs_hba *hba = (struct ufs_hba *)file->private;
-	//1. password set
-	ufsdbg_print_samsung_device_report_set_password(hba);
-
-	//2. Nand information read
-	ufsdbg_print_samsung_device_report_read(file);
-
-}
-
 void ufsdbg_print_micron_device_report_write(struct ufs_hba *hba)
 {
 	#define WRITE_BUFFER_LEN 44
@@ -1385,6 +1178,122 @@ static void ufsdbg_print_micron_device_report(struct seq_file *file, void *data)
 	ufsdbg_print_micron_device_report_read(file);
 }
 
+#ifdef CONFIG_LFS_UFS_SYSFS_COMMON
+void ufsdbg_print_micron_device_report_read_buffer(struct ufs_hba *hba,char *buf)
+{
+	#define DR_BUFFER_LEN 512
+
+	struct desc_field_offset *tmp;
+	unsigned char cmd[10];
+	u8 *device_report_buf = 0;
+	int err = 0, i;
+	struct scsi_sense_hdr sshdr;
+	struct scsi_device *sdev = NULL;
+	char tmp_buf[32][32];
+
+	struct desc_field_offset device_report_field_name[] = {
+		{"bFactoryBadBlockCount",			0x00, WORD},
+		{"bRuntimeBadBlockCount",			0x02, WORD},
+		{"bSpareBlockCount",				0x04, WORD},
+		{"bReservedBlockCount(SLC)",		0x06, WORD},
+		{"bReservedBlockCount(TLC)",		0x08, WORD},
+		{"bExhaustedLife(SLC)",				0x0A, BYTE},
+		{"bExhaustedLife(TLC)",				0x0B, BYTE},
+		{"bMetadataCorruption",				0x0C, WORD},
+		{"bWriteAmplificationFactor",		0x0E, WORD},
+		{"bMinimumBlockErase(TLC)",			0x10, DWORD},
+		{"bMaximumBlockErase(TLC)",			0x14, DWORD},
+		{"bAverageBlockErase(TLC)",			0x18, DWORD},
+		{"bReserved",			   			0x1C, DWORD},
+		{"bMinimumBlockErase(SLC)",			0x20, DWORD},
+		{"bMaximumBlockErase(SLC)",			0x24, DWORD},
+		{"bAverageBlockErase(SLC)",			0x28, DWORD},
+		{"bReserved",						0x2C, DWORD},
+		{"bInitializationCount(success)",	0x30, DWORD},
+		{"bInitializationCount(failure)",	0x34, DWORD},
+		{"bReadReclaimCount(SLC)",			0x38, DWORD},
+		{"bReadReclaimCount(TLC)",			0x3C, DWORD},
+		{"bReadDataSize(100MB unit)",		0x40, DWORD},
+		{"bWrittenDataSize(100MB unit)",	0x44, DWORD},
+		{"bSPOR_WriteFailCount",			0x48, DWORD},
+		{"bSPOR_RecoveryCount",				0x4C, DWORD},
+		{"bVDET_Count",						0x50, DWORD},
+		{"bUECC_Count",						0x54, DWORD},
+		{"bReadRetryCount",					0x58, DWORD},
+		{"bReserved",						0x5C, DWORD},
+	};
+
+	device_report_buf = kzalloc(DR_BUFFER_LEN, GFP_KERNEL);
+	if (!device_report_buf)
+		return;
+
+	memset(device_report_buf, 0x00, DR_BUFFER_LEN);
+	pr_err("%s: test\n", __func__);
+	cmd[0] = 0x3C;
+	cmd[1] = 0xC1;
+	cmd[2] = 0;
+
+	cmd[3] = 0;
+	cmd[4] = 0;
+	cmd[5] = 0;
+
+	cmd[6] = 0;
+	cmd[7] = 0x02;
+	cmd[8] = 0;
+	cmd[9] = 0;
+
+	/* seems all general LU have the same record, so targeting to LUN0 */
+	sdev = scsi_device_lookup(hba->sdev_ufs_device->host, 0, 0, 0);
+	if (!sdev) {
+		pr_err("%s: fail to get lun0 device\n", __func__);
+		kfree(device_report_buf);
+		return;
+	}
+
+	err = scsi_execute_req(sdev, cmd, DMA_FROM_DEVICE, device_report_buf,
+				  DR_BUFFER_LEN, &sshdr, 30 * HZ, 3, NULL);
+
+	scsi_device_put(sdev);
+
+	if (err) {
+		pr_err("%s: read fail to get device report for lun0 err=%d\n", __func__, err);
+		if (scsi_sense_valid(&sshdr)) {
+			pr_err("%s: sshdr : response_code(%d)/sense_key(%d)/asc(%d)/ascq(%d)\n", __func__,
+				sshdr.response_code, sshdr.sense_key, sshdr.asc, sshdr.ascq);
+		}
+
+		goto out_free;
+	}
+
+	/* seems little endian */
+	for (i = 0; i < ARRAY_SIZE(device_report_field_name); ++i) {
+		u64 val = 0;
+		tmp = &device_report_field_name[i];
+
+		switch (tmp->width_byte) {
+			case BYTE:
+				val = (u8)device_report_buf[tmp->offset];
+				break;
+			case WORD:
+				val = (u16)get_unaligned_be16(&device_report_buf[tmp->offset]);
+				break;
+			case DWORD:
+				val = (u32)get_unaligned_be32(&device_report_buf[tmp->offset]);
+				break;
+			default:
+				break;
+		}
+
+		sprintf(tmp_buf[i],"%s = 0x%llx :",tmp->name,val);
+		strcat(buf,tmp_buf[i]);
+	}
+	strcat(buf,"\n");
+out_free:
+	if (device_report_buf)
+		kfree(device_report_buf);
+
+}
+#endif
 static void ufsdbg_print_wdc_device_report(struct seq_file *file, void *data)
 {
 	struct ufs_hba *hba = (struct ufs_hba *)file->private;
@@ -1666,8 +1575,6 @@ static void ufsdbg_dump_en_health_report(struct seq_file *file, void *data) {
 		ufsdbg_print_wdc_device_report(file, data);
 	}else if(hba->dev_info.w_manufacturer_id == UFS_VENDOR_MICRON){
 		ufsdbg_print_micron_device_report(file, data);
-	}else if(hba->dev_info.w_manufacturer_id == UFS_VENDOR_SAMSUNG){
-		ufsdbg_print_samsung_device_report(file, data);
 	}
 }
 

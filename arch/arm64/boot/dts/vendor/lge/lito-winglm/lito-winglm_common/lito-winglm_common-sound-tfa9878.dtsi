@@ -143,15 +143,21 @@
 			&pri_mi2s_sd0_sleep &pri_mi2s_sd1_sleep>;
 };
 
-&qupv3_se9_i2c { /* QUPV3 SE9  */
+&qupv3_se4_i2c { /* QUPV3 SE4  */
 	status = "ok";
-	tfa98xx_spk: tfa98xx@34 {
+	tfa98xx_spk1: tfa98xx@34 {
 		compatible = "nxp,tfa98xx";
 		status = "ok";
 		reg = <0x34>;
 		reset-gpio = <&tlmm 91 0x0>;
 		reset-polarity = <0>;
 
+		nxp,firmware-name = "Tfa98xx.cnt";
+	};
+	tfa98xx_spk2: tfa98xx@35 {
+		compatible = "nxp,tfa98xx";
+		status = "ok";
+		reg = <0x35>;
 		nxp,firmware-name = "Tfa98xx.cnt";
 	};
 };

@@ -78,19 +78,6 @@ struct hallic_dev ndev = {
 };
 #endif
 
-#if IS_ENABLED(CONFIG_LGE_SWIVEL_HALLIC_SUPPORT)
-/* This dev is only used for saving gpio state.
- * State transition is passed via Key event(SW_LID).
- * So it doesn't need to register as hallic dev.
- */
-struct hallic_dev swivel_dev = {
-	.name = "swivel",
-	.state = 0,
-	.state_front = 0,
-	.state_back = 0,
-};
-#endif
-
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
 	struct input_dev *input;
@@ -292,88 +279,6 @@ static ssize_t cover_recovery_req_store(struct device *dev, struct device_attrib
     return ret;
 }
 #endif
-
-#if IS_ENABLED(CONFIG_LGE_SWIVEL_HALLIC_SUPPORT)
-static ssize_t swivel_event_refresh_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count){
-	int i;
-	ssize_t ret = strnlen(buf, PAGE_SIZE);
-	struct platform_device *pdev = to_platform_device(dev);
-	struct gpio_keys_drvdata *ddata = platform_get_drvdata(pdev);
-
-	for (i = 0; i < ddata->pdata->nbuttons; i++) {
-		struct gpio_button_data *bdata = &ddata->data[i];
-		struct input_dev *input = bdata->input;
-
-		if (!strncmp(bdata->button->desc, "swivel_end", 10) || !strncmp(bdata->button->desc, "swivel_start", 12)) {
-			if (swivel_dev.state) {
-				input_event(input, EV_SW, *bdata->code, 0);
-				input_event(input, EV_SW, *bdata->code, swivel_dev.state);
-			} else {
-				input_event(input, EV_SW, *bdata->code, 1);
-				input_event(input, EV_SW, *bdata->code, swivel_dev.state);
-			}
-			pr_info("%s : code(%d), value(%d)\n", __func__, bdata->button->code, swivel_dev.state);
-			input_sync(input);
-			break;
-		}
-	}
-
-	return ret;
-}
-
-static ssize_t swivel_event_injector_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count){
-	int event, i;
-	ssize_t ret = strnlen(buf, PAGE_SIZE);
-	struct platform_device *pdev = to_platform_device(dev);
-	struct gpio_keys_drvdata *ddata = platform_get_drvdata(pdev);
-
-	sscanf(buf, "%d", &event);
-
-	if (event < SWIVEL_HALF_OPENED || event > SWIVEL_OPENED) {
-		pr_err("%s : Wrong input for swivel. evnet should be between 0 and 2.\n", __func__);
-		return -EINVAL;
-	}
-
-	for (i = 0; i < ddata->pdata->nbuttons; i++) {
-		struct gpio_button_data *bdata = &ddata->data[i];
-		struct input_dev *input = bdata->input;
-
-		if (!strncmp(bdata->button->desc, "swivel_end", 10) || !strncmp(bdata->button->desc, "swivel_start", 12)) {
-			swivel_dev.state = event;
-			input_event(input, EV_SW, *bdata->code, event);
-			pr_info("%s : code(%d), value(%d)\n", __func__, bdata->button->code, event);
-			input_sync(input);
-			break;
-		}
-	}
-
-	return ret;
-}
-
-static ssize_t swivel_event_injector_show(struct device *dev, struct device_attribute *attr, char *buf){
-	struct platform_device *pdev = to_platform_device(dev);
-	struct gpio_keys_drvdata *ddata = platform_get_drvdata(pdev);
-	int swivel_state, i;
-
-	for (i = 0; i < ddata->pdata->nbuttons; i++) {
-		struct gpio_button_data *bdata = &ddata->data[i];
-
-		if (!strncmp(bdata->button->desc, "swivel_end", 10) || !strncmp(bdata->button->desc, "swivel_start", 12)) {
-			swivel_state = swivel_dev.state;
-			break;
-		}
-	}
-
-	if (i == ddata->pdata->nbuttons)
-		goto error;
-
-	return sprintf(buf, "%d\n", swivel_state);
-
-error:
-	pr_err("swivel gpio_key is not registered.\n");
-	return -ENODEV;
-}
-#endif
 /**
  * gpio_keys_attr_show_helper() - fill in stringified bitmap of buttons
  * @ddata: pointer to drvdata
@@ -556,14 +461,6 @@ static DEVICE_ATTR(cover_recovery_req, S_IRUGO | S_IWUSR | S_IWGRP,
        NULL,
        cover_recovery_req_store);
 #endif
-#if IS_ENABLED(CONFIG_LGE_SWIVEL_HALLIC_SUPPORT)
-static DEVICE_ATTR(swivel_event_refresh, S_IRUGO | S_IWUSR | S_IWGRP,
-       NULL,
-       swivel_event_refresh_store);
-static DEVICE_ATTR(swivel_event_injector, S_IRUGO | S_IWUSR | S_IWGRP,
-       swivel_event_injector_show,
-       swivel_event_injector_store);
-#endif
 static struct attribute *gpio_keys_attrs[] = {
 	&dev_attr_keys.attr,
 	&dev_attr_switches.attr,
@@ -572,10 +469,6 @@ static struct attribute *gpio_keys_attrs[] = {
 #if defined(CONFIG_LGE_DUAL_SCREEN)
 	&dev_attr_virtual_mcu_firmware_write.attr,
 	&dev_attr_cover_recovery_req.attr,
-#endif
-#if IS_ENABLED(CONFIG_LGE_SWIVEL_HALLIC_SUPPORT)
-	&dev_attr_swivel_event_refresh.attr,
-	&dev_attr_swivel_event_injector.attr,
 #endif
 	NULL,
 };
@@ -602,76 +495,6 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 		if (state)
 			input_event(input, type, button->code, button->value);
 	} else {
-#if IS_ENABLED(CONFIG_LGE_SWIVEL_HALLIC_SUPPORT)
-		if (!strncmp(bdata->button->desc, "swivel_start", 12)) {
-			pr_info("[Display] swivel_start dev.state = %d, state_front = %d, state_back = %d, state = %d\n", swivel_dev.state, swivel_dev.state_front, swivel_dev.state_back, state);
-			if (swivel_dev.state_front != state) {
-				swivel_dev.state_front = state;
-
-				if (swivel_dev.state_front == 1 && swivel_dev.state_back == 0) {
-					state = SWIVEL_CLOSED;
-				} else if (swivel_dev.state_front == 0 && swivel_dev.state_back == 0){
-					state = SWIVEL_HALF_OPENED;
-				} else if (swivel_dev.state_front == 0 && swivel_dev.state_back == 1) {
-					state = SWIVEL_OPENED;
-				} else if (swivel_dev.state_front == 1 && swivel_dev.state_back == 1) {
-					state = SWIVEL_CLOSED; // undefined state, set SWIVEL_CLOSED forcingly
-				}
-
-				if (swivel_dev.state != state) {
-					pr_info("[Display] swivel_start changed dev.state from %d to %d\n", swivel_dev.state, state);
-					swivel_dev.state = state;
-#ifdef CONFIG_LGE_SAR_CONTROLLER_USB_DETECT
-                                        if( state == SWIVEL_OPENED || state == SWIVEL_CLOSED ){
-                                            extern void sar_controller_notify_connect(u32 type, bool is_connected);
-                                            sar_controller_notify_connect(state, 0); 
-                                        }
-#endif
-				} else {
-					// do nothing at same state
-					return;
-				}
-			} else {
-				// do nothing at same state
-				return;
-			}
-		}
-
-		if (!strncmp(bdata->button->desc, "swivel_end", 10)) {
-			pr_info("[Display] swivel_end dev.state = %d, state_front = %d, state_back = %d, state = %d\n", swivel_dev.state, swivel_dev.state_front, swivel_dev.state_back, state);
-			if (swivel_dev.state_back != state) {
-				swivel_dev.state_back = state;
-
-				if (swivel_dev.state_front == 1 && swivel_dev.state_back == 0) {
-					state = SWIVEL_CLOSED;
-				} else if (swivel_dev.state_front == 0 && swivel_dev.state_back == 0){
-					state = SWIVEL_HALF_OPENED;
-				} else if (swivel_dev.state_front == 0 && swivel_dev.state_back == 1) {
-					state = SWIVEL_OPENED;
-				} else if (swivel_dev.state_front == 1 && swivel_dev.state_back == 1) {
-					state = SWIVEL_CLOSED; // undefined state, set SWIVEL_CLOSED forcingly
-				}
-
-				if (swivel_dev.state != state) {
-					pr_info("[Display] swivel_end changed dev.state from %d to %d\n", swivel_dev.state, state);
-					swivel_dev.state = state;
-#ifdef CONFIG_LGE_SAR_CONTROLLER_USB_DETECT
-                                        if( state == SWIVEL_OPENED || state == SWIVEL_CLOSED ){
-                                            extern void sar_controller_notify_connect(u32 type, bool is_connected);
-                                            sar_controller_notify_connect(state, 1); 
-                                        }
-#endif
-				} else {
-					// do nothing at same state
-					return;
-				}
-			} else {
-				// do nothing at same state
-				return;
-			}
-		}
-#endif
-
 #if defined(CONFIG_LGE_DUAL_SCREEN)
 		if (is_ds_connected() && ((*bdata->code == 115) || (*bdata->code == 377)) ) {
 			pr_err("gpio_keys_report_event: skip report event! is_ds_connected(%d), code(%d), value(%d)\n", is_ds_connected(), button->code, state);
@@ -714,8 +537,10 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 			if (!strncmp(bdata->button->desc, "ds3_smart_cover", 15)) {
 				if (sdev.state_front != state) {
 					sdev.state_front = state;
-					hallic_set_state(&sdev, state);
-					pr_info("[Display][hallIC] %s state switched to %s \n", "ds3_smart_cover", (state ? "CLOSE" : "OPEN"));
+					if (is_ds_connected() || lge_get_factory_boot()) {
+						hallic_set_state(&sdev, state);
+						pr_info("[Display][hallIC] %s state switched to %s \n", "ds3_smart_cover", (state ? "CLOSE" : "OPEN"));
+					}
 				}
 			}
 
@@ -725,8 +550,10 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 				}
 				if (sdev.state_back != state) {
 					sdev.state_back = state;
-					hallic_set_state(&sdev, state);
-					pr_info("[Display][hallIC] %s state switched to %s \n", "ds3_cover_display_back", (state ? "CLOSE" : "OPEN"));
+					if (is_ds_connected() || lge_get_factory_boot()) {
+						hallic_set_state(&sdev, state);
+						pr_info("[Display][hallIC] %s state switched to %s \n", "ds3_cover_display_back", (state ? "CLOSE" : "OPEN"));
+					}
 				}
 			}
 
@@ -1336,7 +1163,6 @@ static int gpio_keys_probe(struct platform_device *pdev)
 		}
 	}
 #endif
-
 	error = devm_device_add_group(dev, &gpio_keys_attr_group);
 	if (error) {
 		dev_err(dev, "Unable to export keys/switches, error: %d\n",

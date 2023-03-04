@@ -158,8 +158,7 @@ int intel_sanitize_enable_ppgtt(struct drm_i915_private *dev_priv,
 	if (enable_ppgtt == 0 && INTEL_GEN(dev_priv) < 9)
 		return 0;
 
-	/* Full PPGTT is required by the Gen9 cmdparser */
-	if (enable_ppgtt == 1 && INTEL_GEN(dev_priv) != 9)
+	if (enable_ppgtt == 1)
 		return 1;
 
 	if (enable_ppgtt == 2 && has_full_ppgtt)

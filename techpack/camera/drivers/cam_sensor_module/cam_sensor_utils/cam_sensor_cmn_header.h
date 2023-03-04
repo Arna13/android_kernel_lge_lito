@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _CAM_SENSOR_CMN_HEADER_
@@ -171,7 +171,6 @@ enum cam_eeprom_packet_opcodes {
 enum cam_ois_packet_opcodes {
 	CAM_OIS_PACKET_OPCODE_INIT,
 	CAM_OIS_PACKET_OPCODE_OIS_CONTROL,
-	CAM_OIS_PACKET_OPCODE_OIS_USERDATA, /* LGE_CHANGE, OIS Bring up, 2019-10-07, yonghwan.lym@lge.com */
 	CAM_OIS_PACKET_OPCODE_READ
 };
 
@@ -224,8 +223,7 @@ enum cam_sensor_i2c_cmd_type {
 	CAM_SENSOR_I2C_WRITE_SEQ,
 	CAM_SENSOR_I2C_READ_RANDOM,
 	CAM_SENSOR_I2C_READ_SEQ,
-	CAM_SENSOR_I2C_POLL,
-	CAM_SENSOR_I2C_SET_I2C_INFO
+	CAM_SENSOR_I2C_POLL
 };
 
 struct common_header {
@@ -290,7 +288,6 @@ struct cam_sensor_i2c_seq_reg {
 struct i2c_settings_list {
 	struct cam_sensor_i2c_reg_setting i2c_settings;
 	struct cam_sensor_i2c_seq_reg seq_settings;
-	struct cam_cmd_i2c_info slave_info;
 	enum cam_sensor_i2c_cmd_type op_code;
 	struct list_head list;
 };
@@ -326,7 +323,6 @@ struct cam_camera_slave_info {
 	uint16_t sensor_id_reg_addr;
 	uint16_t sensor_id;
 	uint16_t sensor_id_mask;
-	uint8_t  i2c_freq_mode;
 };
 
 struct msm_sensor_init_params {
@@ -403,22 +399,6 @@ struct msm_camera_gpio_conf {
 	uint8_t camera_on_table_size;
 	struct msm_camera_gpio_num_info *gpio_num_info;
 };
-
-/* LGE_CHANGE_S, OIS Bring up, 2019-10-07, yonghwan.lym@lge.com */
-#define MSM_OIS_DATA_BUFFER_SIZE 15
-struct msm_ois_readout {
-    int32_t ois_x_shift;
-    int32_t ois_y_shift;
-    int64_t x_readout_time;
-    int64_t y_readout_time;
-};
-
-struct msm_ois_readout_buffer {
-    struct msm_ois_readout buffer[MSM_OIS_DATA_BUFFER_SIZE];
-    int32_t buffer_head;
-    int32_t buffer_tail;
-};
-/* LGE_CHANGE_E, OIS Bring up, 2019-10-07, yonghwan.lym@lge.com */
 
 #define MSM_ACT_DATA_BUFFER_SIZE 15
 struct msm_act_readout {

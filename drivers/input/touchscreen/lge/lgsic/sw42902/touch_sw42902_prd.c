@@ -2241,54 +2241,6 @@ static ssize_t show_fdata(struct device *dev, char *buf)
 
 	return ret;
 }
-
-static int check_osc_status(struct device *dev)
-{
-	int ret = 0;
-	u32 data = 0;
-	u32 value = 0;
-	u32 addr = 0;
-
-	/* write data */
-	data = 0x8018;
-	addr =  0x3c;
-	if (sw42902_reg_write(dev, addr, &data, sizeof(u32)) < 0) {
-		TOUCH_E("reg addr 0x%x write fail\n", addr);
-		ret = 1;
-	} else {
-		TOUCH_I("reg[%x] = 0x%x\n", addr, data);
-	}
-	touch_msleep(10);
-
-	/* read data */
-	addr =  0xfd8;
-	if (sw42902_reg_read(dev, addr, &value, sizeof(u32)) < 0) {
-		TOUCH_E("reg addr 0x%x read fail\n", addr);
-		ret = 1;
-	} else {
-		TOUCH_I("reg[%x] = 0x%x\n", addr, value);
-	}
-
-	/* check read data */
-	if (value == 0xffffffff) {
-		ret = 1;
-		TOUCH_I("trim data failed\n");
-	} else {
-		ret = 0;
-		TOUCH_I("trim data success\n");
-	}
-
-	/* restore data */
-	data = 0;
-	addr = 0x3c;
-	if (sw42902_reg_write(dev, addr, &data, sizeof(u32)) < 0) {
-		TOUCH_E("reg addr 0x%x write fail\n", addr);
-	} else {
-		TOUCH_I("reg[%x] = 0x%x\n", addr, data);
-	}
-
-	return ret;
-}
 static ssize_t show_lpwg_sd(struct device *dev, char *buf)
 {
 	struct touch_core_data *ts = to_touch_core(dev);
@@ -2302,7 +2254,6 @@ static ssize_t show_lpwg_sd(struct device *dev, char *buf)
 	int ret = 0;
 	int file_exist = 0;
 
-	int osc_status_ret = 0;
 	/* file create , time log */
 	write_file(dev, "\nShow_lpwg_sd Test Start", TIME_INFO_SKIP);
 	write_file(dev, "\n", TIME_INFO_WRITE);
@@ -2342,8 +2293,6 @@ static ssize_t show_lpwg_sd(struct device *dev, char *buf)
 	touch_interrupt_control(ts->dev, INTERRUPT_DISABLE);
 
 	sw42902_tc_driving(dev, LCD_MODE_STOP);
-
-	osc_status_ret = check_osc_status(dev);
 
 	/*
 		U0_M1_RAW_SELF_TEST
@@ -2398,16 +2347,16 @@ static ssize_t show_lpwg_sd(struct device *dev, char *buf)
 	ret = snprintf(buf + ret, PAGE_SIZE, "\n========RESULT=======\n");
 	TOUCH_I("========RESULT=======\n");
 
-	if (!m1_rawdata_ret && !m2_rawdata_ret && !m1_jitter_ret && !m2_jitter_ret && !osc_status_ret) {
+	if (!m1_rawdata_ret && !m2_rawdata_ret && !m1_jitter_ret && !m2_jitter_ret) {
 		ret += snprintf(buf + ret, PAGE_SIZE - ret,
 				"LPWG RawData : %s\n", "Pass");
 		TOUCH_I("LPWG RawData : %s\n", "Pass");
 	} else {
 		ret += snprintf(buf + ret, PAGE_SIZE - ret,
-				"LPWG RawData : %s (m1_raw:%d/m2_raw:%d/m1_jitter:%d/m2_jitter:%d/osc_status:%d)\n", "Fail",
-				m1_rawdata_ret, m2_rawdata_ret, m1_jitter_ret, m2_jitter_ret, osc_status_ret);
-		TOUCH_I("LPWG RawData : %s (m1_raw:%d/m2_raw:%d/m1_jitter:%d/m2_jitter:%d/osc_status_ret:%d)\n", "Fail",
-				m1_rawdata_ret, m2_rawdata_ret, m1_jitter_ret, m2_jitter_ret, osc_status_ret);
+				"LPWG RawData : %s (m1_raw:%d/m2_raw:%d/m1_jitter:%d/m2_jitter:%d)\n", "Fail",
+				m1_rawdata_ret, m2_rawdata_ret, m1_jitter_ret, m2_jitter_ret);
+		TOUCH_I("LPWG RawData : %s (m1_raw:%d/m2_raw:%d/m1_jitter:%d/m2_jitter:%d)\n", "Fail",
+				m1_rawdata_ret, m2_rawdata_ret, m1_jitter_ret, m2_jitter_ret);
 	}
 	ret += snprintf(buf + ret, PAGE_SIZE, "=====================\n");
 	TOUCH_I("=====================\n");

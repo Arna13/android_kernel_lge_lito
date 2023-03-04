@@ -2068,12 +2068,6 @@ static const struct ipa_ep_configuration ipa3_ep_mapping
 			IPA_DPS_HPS_SEQ_TYPE_INVALID,
 			QMB_MASTER_SELECT_DDR,
 			{ 12, 4, 4, 4, IPA_EE_AP, GSI_ESCAPE_BUF_ONLY} },
-	[IPA_4_2][IPA_CLIENT_ODL_DPL_CONS]	= {
-			true, IPA_v4_2_GROUP_UL_DL,
-			false,
-			IPA_DPS_HPS_SEQ_TYPE_INVALID,
-			QMB_MASTER_SELECT_DDR,
-			{ 13, 10, 6, 6, IPA_EE_AP, GSI_ESCAPE_BUF_ONLY} },
 	[IPA_4_2][IPA_CLIENT_APPS_LAN_CONS]       = {
 			true, IPA_v4_2_GROUP_UL_DL,
 			false,
@@ -2098,6 +2092,12 @@ static const struct ipa_ep_configuration ipa3_ep_mapping
 			IPA_DPS_HPS_SEQ_TYPE_INVALID,
 			QMB_MASTER_SELECT_DDR,
 			{ 10, 2, 6, 6, IPA_EE_Q6,  GSI_ESCAPE_BUF_ONLY} },
+	[IPA_4_2][IPA_CLIENT_Q6_LTE_WIFI_AGGR_CONS] = {
+			true, IPA_v4_2_GROUP_UL_DL,
+			false,
+			IPA_DPS_HPS_SEQ_TYPE_INVALID,
+			QMB_MASTER_SELECT_DDR,
+			{ 13, 4, 6, 6, IPA_EE_Q6, GSI_ESCAPE_BUF_ONLY} },
 	[IPA_4_2][IPA_CLIENT_ETHERNET_CONS] = {
 			true, IPA_v4_2_GROUP_UL_DL,
 			false,
@@ -5255,23 +5255,19 @@ int ipa3_cfg_ep_holb(u32 clnt_hdl, const struct ipa_ep_cfg_holb *ep_holb)
 
 	IPA_ACTIVE_CLIENTS_INC_EP(ipa3_get_client_mapping(clnt_hdl));
 
-	if (ep_holb->en == IPA_HOLB_TMR_DIS) {
-		ipahal_write_reg_n_fields(IPA_ENDP_INIT_HOL_BLOCK_EN_n,
-			clnt_hdl, ep_holb);
-		goto success;
-	}
+	ipahal_write_reg_n_fields(IPA_ENDP_INIT_HOL_BLOCK_EN_n, clnt_hdl,
+		ep_holb);
 
-	/* Follow HPG sequence to DIS_HOLB, Configure Timer, and HOLB_EN */
-	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5) {
-		ipa3_ctx->ep[clnt_hdl].holb.en = IPA_HOLB_TMR_DIS;
+	/* IPA4.5 issue requires HOLB_EN to be written twice */
+	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5)
 		ipahal_write_reg_n_fields(IPA_ENDP_INIT_HOL_BLOCK_EN_n,
 			clnt_hdl, ep_holb);
-	}
 
 	/* Configure timer */
 	if (ipa3_ctx->ipa_hw_type == IPA_HW_v4_2) {
 		ipa3_cal_ep_holb_scale_base_val(ep_holb->tmr_val,
-			&ipa3_ctx->ep[clnt_hdl].holb);
+				&ipa3_ctx->ep[clnt_hdl].holb);
+		goto success;
 	}
 	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5) {
 		int res;
@@ -5287,19 +5283,9 @@ int ipa3_cfg_ep_holb(u32 clnt_hdl, const struct ipa_ep_cfg_holb *ep_holb)
 		}
 	}
 
+success:
 	ipahal_write_reg_n_fields(IPA_ENDP_INIT_HOL_BLOCK_TIMER_n,
 		clnt_hdl, &ipa3_ctx->ep[clnt_hdl].holb);
-
-	/* Enable HOLB */
-	ipa3_ctx->ep[clnt_hdl].holb.en = IPA_HOLB_TMR_EN;
-	ipahal_write_reg_n_fields(IPA_ENDP_INIT_HOL_BLOCK_EN_n,
-		clnt_hdl, ep_holb);
-	/* IPA4.5 issue requires HOLB_EN to be written twice */
-	if (ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5)
-		ipahal_write_reg_n_fields(IPA_ENDP_INIT_HOL_BLOCK_EN_n,
-			clnt_hdl, ep_holb);
-
-success:
 	IPA_ACTIVE_CLIENTS_DEC_EP(ipa3_get_client_mapping(clnt_hdl));
 	IPADBG("cfg holb %u ep=%d tmr=%d\n", ep_holb->en, clnt_hdl,
 		ep_holb->tmr_val);
@@ -7614,7 +7600,6 @@ static int __ipa3_stop_gsi_channel(u32 clnt_hdl)
 	struct ipa3_ep_context *ep;
 	enum ipa_client_type client_type;
 	struct IpaHwOffloadStatsAllocCmdData_t *gsi_info;
-	struct ipa_ep_cfg_holb holb_cfg;
 
 	if (clnt_hdl >= ipa3_ctx->ipa_num_pipes ||
 		ipa3_ctx->ep[clnt_hdl].valid == 0) {
@@ -7669,24 +7654,6 @@ static int __ipa3_stop_gsi_channel(u32 clnt_hdl)
 		default:
 			IPADBG("client_type %d not supported\n",
 				client_type);
-		}
-	}
-
-	/* Enable HOLB on MHIP RMNET CONS before stopping
-	 * USB PROD pipe
-	 */
-	if (ipa3_is_mhip_offload_enabled() &&
-		client_type == IPA_CLIENT_USB_PROD) {
-		memset(&holb_cfg, 0, sizeof(struct ipa_ep_cfg_holb));
-		holb_cfg.en = IPA_HOLB_TMR_EN;
-		holb_cfg.tmr_val = 0;
-		IPADBG("Enabling HOLB on RMNET CONS pipe");
-		res = ipa3_cfg_ep_holb(ipa3_get_ep_mapping(
-				IPA_CLIENT_MHI_PRIME_RMNET_CONS), &holb_cfg);
-		if (res) {
-			IPAERR("Enable HOLB failed ep:%lu\n",
-				ipa3_get_ep_mapping(
-					IPA_CLIENT_MHI_PRIME_RMNET_CONS));
 		}
 	}
 

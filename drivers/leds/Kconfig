@@ -208,21 +208,6 @@ config LEDS_NET48XX
 	  This option enables support for the Soekris net4801 and net4826 error
 	  LED.
 
-config LEDS_QTI_FLASH
-	tristate "Support for QTI Flash LEDs"
-	depends on LEDS_CLASS_FLASH
-	depends on MFD_SPMI_PMIC
-	select LEDS_TRIGGERS
-	help
-	  This driver supports flash LED peripheral that is present on
-	  some Qualcomm Technologies, Inc. PMICs (e.g. PM8350C).  It can
-	  configure the flash LED target current for several independent
-	  channels. It also supports various over current and over
-	  temperature mitigation features.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called leds-qti-flash.
-
 config LEDS_FSG
 	tristate "LED Support for the Freecom FSG-3"
 	depends on LEDS_CLASS
@@ -790,13 +775,6 @@ config LEDS_QPNP_FLASH_V2
           from PMI8998, PM8150L and their derivatives.  It can configure the
           flash LED target current for several independent channels.  It also
           supports various over current and over temperature mitigation features.
-
-config LEDS_AW8624_HAPTICS
-	tristate "Vibrator-Haptics support for AW8624"
-	depends on LEDS_CLASS
-	help
-	  This option enables device driver support for the vibrator-haptics
-	  The vibrator-haptics peripheral is capable of driving LRA vibrators.
 
 config LEDS_QPNP_VIBRATOR_LDO
 	tristate "Vibrator-LDO support for QPNP PMIC"

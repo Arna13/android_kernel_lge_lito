@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
  */
 
 #ifndef __UAPI_CAM_SENSOR_H__
@@ -137,38 +137,9 @@ struct cam_cmd_ois_info {
 	uint8_t               cmd_type;
 	uint8_t               ois_fw_flag;
 	uint8_t               is_ois_calib;
-	uint8_t               is_ois_aat; /* LGE_CHANGE, OIS AAT, hongs.lee@lge.com */
 	char                  ois_name[MAX_OIS_NAME_SIZE];
 	struct cam_ois_opcode opcode;
 } __attribute__((packed));
-
-/* LGE_CHANGE_S, OIS Bring up, 2019-10-07, yonghwan.lym@lge.com */
-/**
- * struct cam_cmd_ois_userdata - Contains OIS userdata
- *
- * @select                :    pointing which var is updated
- * @oisThreadNeeded       :    ois thread needed
- * @reserved              :    reserved
- */
-struct cam_cmd_ois_userdata {
-	uint8_t               select;
-	uint8_t               oisThreadNeeded;
-	uint32_t              reserved;
-} __attribute__((packed));
-
-/**
- * struct cam_cmd_actuator_userdata - Contains Actuator userdata
- *
- * @select                :    pointing which var is updated
- * @oisThreadNeeded       :    actuator thread needed
- * @reserved              :    reserved
- */
-struct cam_cmd_actuator_userdata {
-	uint8_t               select;
-	uint8_t               actuatorThreadNeeded;
-	uint32_t              reserved;
-} __attribute__((packed));
-/* LGE_CHANGE_E, OIS Bring up, 2019-10-07, yonghwan.lym@lge.com */
 
 /**
  * struct cam_cmd_probe - Contains sensor slave info
@@ -363,8 +334,7 @@ struct cam_cmd_unconditional_wait {
  * @3phase        : Details whether 3Phase / 2Phase operation
  * @settle_time   : Settling time in ms
  * @data_rate     : Data rate
- * @mipi_flags    : Mipi flags mask
- * @reserved
+ *
  */
 struct cam_csiphy_info {
 	uint16_t    lane_mask;
@@ -375,8 +345,6 @@ struct cam_csiphy_info {
 	uint8_t     secure_mode;
 	uint64_t    settle_time;
 	uint64_t    data_rate;
-	uint32_t    mipi_flags;
-	uint32_t    reserved;
 } __attribute__((packed));
 
 /**

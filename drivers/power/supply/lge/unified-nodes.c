@@ -12,9 +12,6 @@
 #include <linux/module.h>
 #include <linux/thermal.h>
 #include <linux/platform_device.h>
-#if defined(CONFIG_MACH_LITO_CAYMANLM_LAO_COM) || defined(CONFIG_MACH_LITO_ACELM)
-#include <soc/qcom/lge/board_lge.h>
-#endif
 
 #include "veneer-primitives.h"
 
@@ -23,7 +20,6 @@
 #ifdef CONFIG_LGE_PM_CCD
 #define VOTER_NAME_CCD		"CCD"
 #define VOTER_NAME_CCD_INPUT		"CCD_INPUT"
-#define VOTER_NAME_CCD_WLC			"CCD_WLC"
 #define VOTER_NAME_CCD_BATCHG		"CCD_BATCHG"
 #endif
 #define RESTRICTION_MAX_COUNT	8
@@ -47,7 +43,6 @@ struct unified_nodes {
 	struct voter_entry		ccd_fcc;
 	struct voter_entry		ccd_vfloat;
 	struct voter_entry		ccd_input_suspend;
-	struct voter_entry		ccd_wlc_suspend;
 	struct voter_entry		ccd_batchg_en;
 #else
 	bool				charging_showcase;
@@ -77,10 +72,10 @@ struct unified_nodes {
 #ifdef CONFIG_LGE_PM_CCD
 	const char* ttf_psy;
 #endif
+	int				bsm_timetofull;
 	int				fake_temperature;
 	int				fake_mvoltage;
 	int				fake_capacity;
-	int				bsm_timetofull;
 	struct thermal_zone_device *xo_tz;
 	struct thermal_zone_device *bd_tz;
 
@@ -101,34 +96,6 @@ struct unified_nodes {
 	int irc_enabled;
 	int irc_resistance;
 };
-
-#ifdef CONFIG_MACH_LITO_ACELM
-static bool lge_disable_smb1390(void)
-{
-	if ((lge_get_sku_carrier() == HW_SKU_KR) &&
-		(lge_get_board_rev_no() > HW_REV_C ) ){
-		return true;
-	}
-
-	if ((lge_get_sku_carrier() == HW_SKU_GLOBAL     ||
-		 lge_get_sku_carrier() == HW_SKU_GLOBAL_MEA ||
-		 lge_get_sku_carrier() == HW_SKU_AU_OPEN    ||
-		 lge_get_sku_carrier() == HW_SKU_AU_TEL     ||
-		 lge_get_sku_carrier() == HW_SKU_GLOBAL_CERT) &&
-		(lge_get_board_rev_no() < HW_REV_1_0) ){
-		return true;
-	}
-
-	if (lge_get_laop_operator() == OP_OPEN_KR ||
-		lge_get_laop_operator() == OP_SKT_KR  ||
-		lge_get_laop_operator() == OP_KT_KR   ||
-		lge_get_laop_operator() == OP_LGU_KR  ){
-		return true;
-	}
-
-	return false;
-}
-#endif
 
 static void voter_unregister(struct unified_nodes* uninodes) {
 	int i;
@@ -153,7 +120,6 @@ static void voter_unregister(struct unified_nodes* uninodes) {
 	veneer_voter_unregister(&uninodes->ccd_fcc);
 	veneer_voter_unregister(&uninodes->ccd_vfloat);
 	veneer_voter_unregister(&uninodes->ccd_input_suspend);
-	veneer_voter_unregister(&uninodes->ccd_wlc_suspend);
 	veneer_voter_unregister(&uninodes->ccd_batchg_en);
 #endif
 }
@@ -208,7 +174,6 @@ static bool voter_register(struct unified_nodes* uninodes) {
 	ret |= veneer_voter_register(&uninodes->ccd_fcc, VOTER_NAME_CCD, VOTER_TYPE_IBAT, false);
 	ret |= veneer_voter_register(&uninodes->ccd_vfloat, VOTER_NAME_CCD, VOTER_TYPE_VFLOAT, false);
 	ret |= veneer_voter_register(&uninodes->ccd_input_suspend, VOTER_NAME_CCD_INPUT, VOTER_TYPE_IUSB, false);
-	ret |= veneer_voter_register(&uninodes->ccd_wlc_suspend, VOTER_NAME_CCD_WLC, VOTER_TYPE_IDC, false);
 	ret |= veneer_voter_register(&uninodes->ccd_batchg_en, VOTER_NAME_CCD_BATCHG, VOTER_TYPE_IBAT, false);
 
 	if (!ret) {
@@ -250,14 +215,7 @@ static bool unified_nodes_actm_dt(
 	int actm_array_size = 0;
 	int actm_array[3] = {0, };
 
-#ifdef CONFIG_MACH_LITO_CAYMANLM_LAO_COM
-	if(HW_SKU_NA_CDMA_VZW == lge_get_sku_carrier())
-		devnode_actm = of_find_node_by_name(dnode, "vzw-adaptive-charging-thermal");
-	else
-		devnode_actm = of_find_node_by_name(dnode, "adaptive-charging-thermal");
-#else
 	devnode_actm = of_find_node_by_name(dnode, "adaptive-charging-thermal");
-#endif
 	devnode_bvp = of_find_node_by_name(dnode, "protection-batvolt");
 
 	uninodes->irc_enabled = of_property_read_bool(devnode_bvp, "lge,irc-enable");
@@ -270,14 +228,14 @@ static bool unified_nodes_actm_dt(
 
 	actm_enable = of_property_read_bool(devnode_actm, "lge,actm-enable");
 	if (actm_enable) {
-		ret = of_property_read_s32(devnode_actm,
+		ret = of_property_read_u32(devnode_actm,
 			"lge,actm-default-mode", &uninodes->actm.mode);
 		if (ret != 0) {
 			pr_uninode("Failed to read 'lge,actm-default-mode'(%d)\n", ret);
 			uninodes->actm.mode = -2;
 		}
 
-		ret = of_property_read_s32(devnode_actm,
+		ret = of_property_read_u32(devnode_actm,
 			"lge,actm-lcdon-temp-offset", &uninodes->actm.lcdon_temp_offset);
 		if (ret != 0) {
 			pr_uninode("Failed to read 'lge,actm-lcdon-temp-offset'(%d)\n", ret);
@@ -433,9 +391,6 @@ static bool unified_nodes_actm_dt(
 		uninodes->actm.tempoffs_wireless[0] = 0;
 		uninodes->actm.tempoffs_wireless[1] = 0;
 		uninodes->actm.tempoffs_wireless[2] = 0;
-		uninodes->actm.wired_max_fcc[0] = 0;
-		uninodes->actm.wired_max_fcc[1] = 0;
-		uninodes->actm.wired_max_fcc[2] = 0;
 		uninodes->actm.current_wired[0] = 0;
 		uninodes->actm.current_wired[1] = 0;
 		uninodes->actm.current_wired[2] = 0;
@@ -452,8 +407,7 @@ static bool unified_nodes_actm_dt(
 	return true;
 }
 
-static bool unified_nodes_devicetree(struct device_node* devnode, struct unified_nodes* uninodes)
-{
+static bool unified_nodes_devicetree(struct device_node* devnode, struct unified_nodes* uninodes) {
 	struct device_node* devnode_fakebatt = NULL;
 	struct device_node* devnode_battage = NULL;
 #ifdef CONFIG_LGE_PM_CCD
@@ -467,12 +421,9 @@ static bool unified_nodes_devicetree(struct device_node* devnode, struct unified
 	int ret = 0;
 
 	bool result = true;
-#ifdef CONFIG_MACH_LITO_ACELM
-	uninodes->support_fastpl = lge_disable_smb1390() ? -1 : 0;
-#else
+
 	uninodes->support_fastpl = (!of_property_read_u32(devnode, "lge,feature-charging-parallel", &buf)
 		&& buf == 1) ? 0 : -1; /* if parallel charging is not supported, set it to '-1' */
-#endif
 	uninodes->support_fastchg = !of_property_read_u32(devnode, "lge,feature-charging-highspeed", &buf)
 		? !!buf : 0;
 
@@ -699,9 +650,8 @@ static ssize_t charging_restriction_show(struct device* dev, struct device_attri
 	return snprintf(buf, PAGE_SIZE, "%d", -1);
 }
 
-static ssize_t status_boot_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t size)
-{
-	static struct power_supply* wireless_psy = NULL;
+static ssize_t status_boot_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t size) {
+	struct power_supply* wireless_psy;
 	struct unified_nodes* ref;
 	union power_supply_propval value = { .intval = 0, };
 	int* ori;
@@ -718,12 +668,11 @@ static ssize_t status_boot_store(struct device* dev, struct device_attribute* at
 		if (*ori != new) {
 			*ori = new;
 			if (*ori) {
-				if (!wireless_psy)
-					 wireless_psy = power_supply_get_by_name("wireless");
-
+				wireless_psy = power_supply_get_by_name("wireless");
 				if (wireless_psy) {
 					power_supply_set_property(wireless_psy,
 						POWER_SUPPLY_PROP_INPUT_SUSPEND, &value);
+					power_supply_put(wireless_psy);
 				}
 			}
 		}
@@ -810,37 +759,31 @@ static ssize_t thermald_idc_show(struct device* dev, struct device_attribute* at
 	return idc ? voter_show(idc, buf) : 0;
 }
 
-static ssize_t thermald_vdc_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t size)
-{
-	static struct power_supply* wireless = NULL;
-	if (!wireless)
-		wireless = power_supply_get_by_name("wireless");
+static ssize_t thermald_vdc_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t size) {
+	struct power_supply* wireless = power_supply_get_by_name("wireless");
 
 	if (dev && dev->platform_data) {
 		int value = -1;
 		sscanf(buf, "%d", &value);
 
 		if (wireless) {
-			union power_supply_propval voltage = { .intval = value * 1000, };
+			union power_supply_propval voltage = { .intval = value, };
 			power_supply_set_property(wireless, POWER_SUPPLY_PROP_VOLTAGE_MAX, &voltage);
+			power_supply_put(wireless);
 		}
 	} else
 		pr_uninode("Error on getting voter\n");
 
 	return size;
 }
-
-static ssize_t thermald_vdc_show(struct device* dev, struct device_attribute* attr, char* buf)
-{
+static ssize_t thermald_vdc_show(struct device* dev, struct device_attribute* attr, char* buf) {
+	struct power_supply* wireless = power_supply_get_by_name("wireless");
 	union power_supply_propval voltage = { .intval = 0, };
-	static struct power_supply* wireless = NULL;
-	if (!wireless)
-		wireless = power_supply_get_by_name("wireless");
 
 	if (dev && dev->platform_data) {
 		if (wireless) {
 			power_supply_get_property(wireless, POWER_SUPPLY_PROP_VOLTAGE_MAX, &voltage);
-			voltage.intval /= 1000;
+			power_supply_put(wireless);
 		}
 	} else
 		pr_uninode("Error on getting voter\n");
@@ -1155,20 +1098,13 @@ static ssize_t ccd_vfloat_show(struct device* dev, struct device_attribute* attr
 
 static ssize_t ccd_input_suspend_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t size) {
 	struct voter_entry* input_suspend = NULL;
-	struct voter_entry* wlc_suspend = NULL;
 	int suspend = 0;
 
 	if (dev && dev->platform_data &&
 		((struct unified_nodes*)dev->platform_data)->ccd_input_suspend.type == VOTER_TYPE_IUSB)
 		input_suspend = &((struct unified_nodes*)dev->platform_data)->ccd_input_suspend;
 	else
-		pr_uninode("Error on getting input_suspend voter\n");
-
-	if (dev && dev->platform_data &&
-		((struct unified_nodes*)dev->platform_data)->ccd_wlc_suspend.type == VOTER_TYPE_IDC)
-		wlc_suspend = &((struct unified_nodes*)dev->platform_data)->ccd_wlc_suspend;
-	else
-		pr_uninode("Error on getting wlc_suspend voter\n");
+		pr_uninode("Error on getting voter\n");
 
 	sscanf(buf, "%d", &suspend);
 #if defined(CONFIG_QPNP_SMB5) || defined(CONFIG_QPNP_QG)
@@ -1177,11 +1113,9 @@ static ssize_t ccd_input_suspend_store(struct device* dev, struct device_attribu
 	if (suspend == 0){
 #endif
 		veneer_voter_set(input_suspend, VOTE_TOTALLY_BLOCKED);
-		veneer_voter_set(wlc_suspend, VOTE_TOTALLY_BLOCKED);
 		pr_uninode("Input Suspended by CCD voter\n");
 	}else {
 		veneer_voter_set(input_suspend, VOTE_TOTALLY_RELEASED);
-		veneer_voter_set(wlc_suspend, VOTE_TOTALLY_RELEASED);
 		pr_uninode("Input Released by CCD voter\n");
 	}
 
@@ -1677,7 +1611,6 @@ static ssize_t support_fastchg_show(struct device* dev, struct device_attribute*
 	return snprintf(buf, PAGE_SIZE, "%d", ret);
 }
 
-#ifdef CONFIG_LGE_PM_CCD
 #define BSM_FCC_MA 		"2000"
 #define BSM_FCC_CLEAR 	"-1"
 static ssize_t bsm_timetofull_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t size) {
@@ -1712,27 +1645,6 @@ static ssize_t bsm_timetofull_store(struct device* dev, struct device_attribute*
 
 	return size;
 }
-#else
-static ssize_t bsm_timetofull_store(struct device* dev, struct device_attribute* attr, const char* buf, size_t size) {
-	struct unified_nodes*	ref;
-	int*			ori;
-	int 		new;
-
-    pr_uninode("Storing %s\n", buf);
-	if (dev && dev->platform_data) {
-		ref = (struct unified_nodes*)dev->platform_data;
-		ori = &ref->bsm_timetofull;
-
-		sscanf(buf, "%d", &new);
-		if (*ori != new) {
-			*ori = new;
-			charging_time_update(CHARGING_SUPPLY_TYPE_NONE, true);
-		}
-	}
-	return size;
-}
-#endif
-
 static ssize_t bsm_timetofull_show(struct device* dev, struct device_attribute* attr, char* buf) {
 	int ret = 0;
 
@@ -1886,10 +1798,7 @@ static ssize_t actm_sensor_store(
 
 		sscanf(buf, "%d", &new);
 		if (*ori != new) {
-			if (new ==  1 || new ==  2 || new ==  3 ||
-				new == 11 || new == 12 || new == 13 ||
-				new == 21 || new == 22 || new == 23 ||
-				new == 31 || new == 32 || new == 33 )
+			if (new == 1 || new == 2 || new == 3)
 				*ori = new;
 		}
 	}
@@ -2204,9 +2113,9 @@ static struct device_attribute unified_nodes_dattrs [] = {
 	__ATTR(ccd_input_suspend,		0664, ccd_input_suspend_show,		ccd_input_suspend_store),
 	__ATTR(ccd_batchg_en,		0664, ccd_batchg_en_show,		ccd_batchg_en_store),
 #else
-	__ATTR(charging_showcase,	0664, charging_showcase_show,		charging_showcase_store),
+        __ATTR(charging_showcase,	0664, charging_showcase_show,		charging_showcase_store),
 #endif
-	__ATTR(charging_completed,	0444, charging_completed_show,		NULL),
+        __ATTR(charging_completed,	0444, charging_completed_show,		NULL),
 	__ATTR(fake_battery,		0664, fake_battery_show,		fake_battery_store),
 	__ATTR(fake_sdpmax,		0664, fake_sdpmax_show,			fake_sdpmax_store),
 	__ATTR(fake_hvdcp,		0664, fake_hvdcp_show, 			fake_hvdcp_store),

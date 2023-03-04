@@ -7,7 +7,6 @@
 #include <linux/device.h>
 #include "lge_dp.h"
 #include <linux/err.h>
-#include <linux/kdev_t.h>
 
 struct class *dp_noti_class;
 
@@ -40,16 +39,6 @@ void dp_noti_set_state(struct dp_noti_dev *ndev, int state)
 void lge_dp_set_id(unsigned int id) {
 	pr_debug("not supported\n");
 	return;
-}
-
-void lge_dp_drv_init(struct dp_display *dp_display)
-{
-	pr_debug("not supported\n");
-}
-
-void lge_set_dp_hpd(struct dp_display *dp_display, int value)
-{
-	pr_debug("not supported\n");
 }
 
 static int create_dp_noti_class(void)

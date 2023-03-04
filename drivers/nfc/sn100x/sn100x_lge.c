@@ -20,7 +20,7 @@
  *
  *  The original Work has been changed by NXP Semiconductors.
  *
- *  Copyright (C) 2013-2020 NXP Semiconductors
+ *  Copyright (C) 2013-2019 NXP Semiconductors
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,51 +64,54 @@
 #include <linux/of_gpio.h>
 #include <linux/pm_wakeup.h>
 
-#include <linux/version.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
-#include <linux/sched/signal.h>
-#include <linux/fs.h>
-#endif
 #include <linux/timer.h>
 #define LGE_NFC_FIX
 #ifdef LGE_NFC_FIX
+#include <linux/sched/signal.h>
 #include <linux/async.h>
 #include <linux/nfc/sn100x_lge.h>
-#include <soc/qcom/lge/board_lge.h>
-#include <linux/nfc/cold_reset.h>
 #else
 #include "pn553.h"
-#include "cold_reset.h"
 #endif // LGE_NFC_FIX
 
 #ifdef CONFIG_NFC_SELECTIVE_DRIVER
 #include <linux/nfc/lgenfc.h>
 #endif
 
-#define SIG_NFC 44
-#define MAX_BUFFER_SIZE 554
-#define MAX_SECURE_SESSIONS 1
+#ifdef LGE_NFC_FIX
+#define READ_IRQ_MODIFY // [NFC-6953]
+#define NFC_POWER_OFF   false
+#define NFC_POWER_ON    true
+#define NFC_TIMEOUT_MS  2000
+#undef ESE_PWR // LGE_ADD unused ESE_PWR_GPIO
+#undef NEXUS5x
+#undef ISO_RST // unused ISO_RST_GPIO
+#else // LGE_NFC_FIX
+#define ESE_PWR    1
+#define NEXUS5x    1
+#if NEXUS5x
+#undef ISO_RST
+#else
+#define ISO_RST
+#endif
+#endif // LGE_NFC_FIX
 
-/* This macro evaluates to 1 if the cold reset is requested by driver(SPI/UWB). */
-#define IS_PROP_CMD_REQUESTED(flags) (flags & (MASK_ESE_COLD_RESET | RST_PROTECTION_ENABLED))
-/* This macro evaluates to 1 if eSE cold reset response is received */
-#define IS_PROP_RSP(buf)                                                                          \
-                (((MSG_NFCC_RSP | MSG_PROP_GID) == buf[0]) && ((ESE_CLD_RST_OID == buf[1]) ||     \
-                 (RST_PROTECTION_OID == buf[1]) ))
+#define SIG_NFC 44
+#define MAX_BUFFER_SIZE 512
+#define MAX_SECURE_SESSIONS 1
+#define MSG_PROP_GID         0x4F
+#define ESE_CLD_RST_OID      0x1E
+#define ESE_CLD_RST_RSP_SIZE 0x04
 
 /* VEN is kept ON all the time if you define the macro VEN_ALWAYS_ON.
 Used for SN100 usecases */
-#ifdef LGE_NFC_FIX
-#undef VEN_ALWAYS_ON
-#else
 #define VEN_ALWAYS_ON
-#endif
 /* Macro added to disable SVDD power toggling */
 /* #define JCOP_4X_VALIDATION */
 
 #ifdef LGE_NFC_FIX
 static bool sIsWakeLocked = false;
-static struct wakeup_source *nfc_wake_lock;
+static struct wakeup_source nfc_wake_lock;
 #endif //LGE_NFC_FIX
 
 #ifdef READ_IRQ_MODIFY
@@ -128,28 +131,57 @@ static unsigned int clk_source = CLKS_XO;
 #ifdef CONFIG_LGE_NFC_SET_IRQ_WAKEUP
 static bool sIrqState = false;
 #endif
+
+struct pn544_dev    {
+    wait_queue_head_t   read_wq;
+    struct mutex        read_mutex;
+    struct i2c_client   *client;
+    struct miscdevice   pn544_device;
+    unsigned int        ven_gpio;
+    unsigned int        firm_gpio;
+    unsigned int        irq_gpio;
+#ifdef CONFIG_LGE_NFC_USE_PMIC
+  struct clk      *clk_cont;
+  struct clk      *clk_pin;
+#endif
+    struct mutex        p61_state_mutex; /* used to make p61_current_state flag secure */
+    p61_access_state_t  p61_current_state; /* stores the current P61 state */
+    bool                nfc_ven_enabled; /* stores the VEN pin state powered by Nfc */
+    bool                spi_ven_enabled; /* stores the VEN pin state powered by Spi */
+    bool                irq_enabled;
+    spinlock_t          irq_enabled_lock;
+    long                nfc_service_pid; /*used to signal the nfc the nfc service */
+    chip_pwr_scheme_t   chip_pwr_scheme;
+    unsigned int        secure_timer_cnt;
+    struct workqueue_struct *pSecureTimerCbWq;
+    struct work_struct wq_task;
+  /* Bit value  Status           Remark
+   * b0 : 1  -> NFC_ON           Driver Open should set the flag
+   *      0     NFC_OFF          Driver release should reset this flag
+   * b1 : 1  -> FWDNLD           If FWDNLD is going on.
+   *      0     Normal operation
+   * b2 : 1 -> ese_cold_reset sequence has been triggered from the SPI driver
+   *      0 -> ese_cold_reset cmd has been written by the NFC HAL
+   * bits b3 to b7 : Reserved for the future use.
+   * NOTE: Driver probe function should reset b0-b2 flags.
+   *       The value of b3-b7 flags is undetermined.
+   * */
+    volatile uint8_t    state_flags;
+};
 static struct pn544_dev *pn544_dev;
 static struct semaphore ese_access_sema;
 static struct semaphore svdd_sync_onoff_sema;
 static struct completion dwp_onoff_sema;
+static struct completion ese_cold_reset_sema;
+static int8_t ese_cold_reset_rsp[ESE_CLD_RST_RSP_SIZE];
 static struct timer_list secure_timer;
 static void release_ese_lock(p61_access_state_t  p61_current_state);
 int get_ese_lock(p61_access_state_t  p61_current_state, int timeout);
 static long set_jcop_download_state(unsigned long arg);
 static long start_seccure_timer(unsigned long timer_value);
 static long secure_timer_operation(struct pn544_dev *pn544_dev, unsigned long arg);
-extern void rcv_prop_resp_status(const char * const buf);
-extern long ese_cold_reset(ese_cold_reset_origin_t src);
-extern void ese_reset_resource_init(void);
-extern void ese_reset_resource_destroy(void);
-extern void set_force_reset(bool value);
-extern int do_reset_protection(bool enable);
 
 #define SECURE_TIMER_WORK_QUEUE "SecTimerCbWq"
-
-struct pn544_dev * get_nfcc_dev_data(void) {
-  return pn544_dev;
-}
 
 #ifdef CONFIG_LGE_NFC_USE_PMIC
 static void pn544_change_clk(struct pn544_dev *pn544_dev, unsigned int clk_state)
@@ -250,18 +282,7 @@ static void pn544_disable_irq(struct pn544_dev *pn544_dev)
 }
 
 static int pn544_dev_release(struct inode *inode, struct file *filp) {
-#ifdef LGE_NFC_FIX
-    unsigned long flags = 0;
-    spin_lock_irqsave(&pn544_dev->irq_enabled_lock, flags);
-    if (sIsWakeLocked == true) {
-      pr_info("%s: __pm_relax\n", __func__);
-      __pm_relax(nfc_wake_lock);
-      sIsWakeLocked = false;
-    }
-    spin_unlock_irqrestore(&pn544_dev->irq_enabled_lock, flags);
-#endif
-    pn544_dev->state_flags &= ~(P544_FLAG_NFC_VEN_RESET|P544_FLAG_NFC_ON|P544_FLAG_FW_DNLD);
-    set_force_reset(false);
+    pn544_dev->state_flags = 0x00;
     if (pn544_dev->firm_gpio)
         gpio_set_value(pn544_dev->firm_gpio, 0);
     pr_info(KERN_ALERT "Exit %s: NFC driver release  nfc hal  \n", __func__);
@@ -288,7 +309,7 @@ static irqreturn_t pn544_dev_irq_handler(int irq, void *dev_id)
     /* Wake up waiting readers */
     wake_up(&pn544_dev->read_wq);
     if (sIsWakeLocked == false) {
-        __pm_stay_awake(nfc_wake_lock);
+        __pm_stay_awake(&nfc_wake_lock);
         sIsWakeLocked = true;
     } else {
         //pr_err("%s already wake locked!\n", __func__); // for debug
@@ -304,8 +325,27 @@ static irqreturn_t pn544_dev_irq_handler(int irq, void *dev_id)
     return IRQ_HANDLED;
 }
 
+static void rcv_ese_cldrst_status(void)
+{
+    int ret = -1;
+    char tmp[MAX_BUFFER_SIZE];
+    size_t rcount = (size_t)ese_cold_reset_rsp[2];
+    /* Read data: No need to wait for the interrupt */
+    ret = i2c_master_recv(pn544_dev->client, tmp, rcount);
+    if (ret == rcount) {
+        ese_cold_reset_rsp[3] = tmp[0];
+        pr_info("%s NxpNciR : len = 4 > %02X%02X%02X%02X\n", __func__,ese_cold_reset_rsp[0],
+                ese_cold_reset_rsp[1],ese_cold_reset_rsp[2],ese_cold_reset_rsp[3]);
+    } else {
+        pr_err("%s : Failed to receive payload of the cold_rst_cmd\n",__func__);
+        ese_cold_reset_rsp[3] = -EIO;
+    }
+    if (pn544_dev->state_flags &(P544_FLAG_NFC_ON)){
+        complete(&ese_cold_reset_sema);
+    }
+}
 
-ssize_t pn544_dev_read(struct file *filp, char __user *buf,
+static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
         size_t count, loff_t *offset)
 {
     struct pn544_dev *pn544_dev = filp->private_data;
@@ -339,7 +379,7 @@ ssize_t pn544_dev_read(struct file *filp, char __user *buf,
         pr_err("%s: no more interrupt after %dms (%d)!\n", __func__, NFC_TIMEOUT_MS, gpio_get_value(pn544_dev->irq_gpio)); // for debug
         spin_lock_irqsave(&pn544_dev->irq_enabled_lock, flags);
         if (sIsWakeLocked == true) {
-          __pm_relax(nfc_wake_lock);
+          __pm_relax(&nfc_wake_lock);
           sIsWakeLocked = false;
         }
         spin_unlock_irqrestore(&pn544_dev->irq_enabled_lock, flags);
@@ -382,10 +422,14 @@ ssize_t pn544_dev_read(struct file *filp, char __user *buf,
     memset(tmp, 0x00, MAX_BUFFER_SIZE);
     ret = i2c_master_recv(pn544_dev->client, tmp, count);
     //pr_info("%s : reading ret = %du bytes.\n", __func__, ret); // for debug
-    /* If ese cold reset has been requested then read the response */
-    if(IS_PROP_CMD_REQUESTED(pn544_dev->state_flags) && IS_PROP_RSP(tmp)) {
-        rcv_prop_resp_status(tmp);
-        /* Request is from driver, consume the response */
+
+    /* if the received response for COLD_RESET_COMMAND
+     * Consume it in driver*/
+    if ((pn544_dev->state_flags & P544_FLAG_ESE_COLD_RESET_FROM_DRIVER) &&
+            MSG_PROP_GID == tmp[0] && ESE_CLD_RST_OID == tmp[1]) {
+        memset(&ese_cold_reset_rsp, 0, sizeof(ese_cold_reset_rsp));
+        memcpy(ese_cold_reset_rsp, tmp, 3);
+        rcv_ese_cldrst_status();
         mutex_unlock(&pn544_dev->read_mutex);
         kfree(tmp); // [NFC-6460] WBT TD208273
         return 0;
@@ -499,6 +543,64 @@ static void p61_access_unlock(struct pn544_dev *pn544_dev)
     mutex_unlock(&pn544_dev->p61_state_mutex);
 }
 
+long p61_cold_reset(void)
+{
+    long ret = 0;
+    unsigned int loop=0x03;
+    struct file filp;
+    int timeout = 2000; /* 2s timeout :NCI cmd timeout*/
+    unsigned long tempJ = msecs_to_jiffies(timeout);
+    uint8_t cmd_ese_cold_reset[] = {0x2F, 0x1E, 0x00};
+    filp.private_data = pn544_dev;
+    pr_info("%s: Enter", __func__);
+
+    if (pn544_dev->state_flags & P544_FLAG_FW_DNLD) {
+      /* If FW DNLD, Operation is not permitted */
+      pr_err("%s : Operation is not permitted during fwdnld\n", __func__);
+      return -EPERM;
+    }
+    /* pn544_dev_read() should return the rsp if JNI has requested the cold reset*/
+    pn544_dev->state_flags |= (P544_FLAG_ESE_COLD_RESET_FROM_DRIVER);
+    init_completion(&ese_cold_reset_sema);
+    /* write command to I2C line*/
+    do {
+        ret = i2c_master_send(pn544_dev->client, cmd_ese_cold_reset, sizeof(cmd_ese_cold_reset));
+        if (ret == sizeof(cmd_ese_cold_reset)) {
+            break;
+        }
+        loop--;
+        usleep_range(5000, 6000);
+    } while(loop);
+    if(!loop && (ret != sizeof(cmd_ese_cold_reset)) ){
+        pr_err("%s : i2c_master_send returned %ld\n", __func__, ret);
+        pn544_dev->state_flags &= ~(P544_FLAG_ESE_COLD_RESET_FROM_DRIVER);
+        return -EIO;
+    }
+
+    pr_info("%s: NxpNciX: %ld > %02X%02X%02X \n", __func__, ret,cmd_ese_cold_reset[0],
+            cmd_ese_cold_reset[1],cmd_ese_cold_reset[2]);
+    ret = 0x00;
+    if (pn544_dev->state_flags & P544_FLAG_NFC_ON)/* NFC_ON */
+    {
+       /* Read is pending from the NFC service which will complete the ese_cold_reset_sema */
+       if (wait_for_completion_timeout(&ese_cold_reset_sema, tempJ) == 0) {
+          pr_err("%s: Timeout", __func__);
+          ese_cold_reset_rsp[3] = -EAGAIN; // Failure case
+       }
+    } else { /* NFC_OFF */
+     /* call the pn544_dev_read() */
+      filp.f_flags &= ~O_NONBLOCK;
+      ret = pn544_dev_read(&filp, NULL,3, 0);
+    }
+    if(0x00 == ret) /* success case */
+        ret = ese_cold_reset_rsp[3];
+    pn544_dev->state_flags &= ~(P544_FLAG_ESE_COLD_RESET_FROM_DRIVER);
+    /* Return the status to the SPI Driver */
+    pr_info("%s: exit, Status:%ld", __func__,ret);
+    return ret;
+}
+EXPORT_SYMBOL(p61_cold_reset);
+
 static int signal_handler(p61_access_state_t state, long nfc_pid)
 {
     struct siginfo sinfo;
@@ -523,7 +625,7 @@ static int signal_handler(p61_access_state_t state, long nfc_pid)
         if(task)
         {
             pr_info("%s.\n", task->comm);
-            sigret = send_sig_info(SIG_NFC, &sinfo, task);
+            sigret = force_sig_info(SIG_NFC, &sinfo, task);
             if(sigret < 0){
                 pr_info("send_sig_info failed..... sigret %d.\n", sigret);
                 ret = -1;
@@ -663,7 +765,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
                 if (pn544_dev->firm_gpio) {
                     p61_update_access_state(pn544_dev, P61_STATE_DWNLD, true);
                     gpio_set_value(pn544_dev->firm_gpio, 1);
-                    pn544_dev->state_flags |= (P544_FLAG_FW_DNLD);
                 }
 
                 msleep(10);
@@ -687,7 +788,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
                     p61_update_access_state(pn544_dev, P61_STATE_DWNLD, false);
                 }
                 gpio_set_value(pn544_dev->firm_gpio, 0);
-                pn544_dev->state_flags &= ~(P544_FLAG_FW_DNLD);
             }
 
             pn544_dev->nfc_ven_enabled = true;
@@ -746,7 +846,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 #endif
             if (sIsWakeLocked == true) {
                 pr_err("%s: Release Wake_Lock\n", __func__);
-                __pm_relax(nfc_wake_lock);
+                __pm_relax(&nfc_wake_lock);
                 sIsWakeLocked = false;
             }
             spin_unlock_irqrestore(&pn544_dev->irq_enabled_lock, flags);
@@ -788,7 +888,7 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             }
             pr_info("%s FW GPIO set to 0x00 >>>>>>>\n", __func__);
 #ifdef READ_IRQ_MODIFY
-        } else if (arg == 100) {
+        } else if (arg == 7) {
             pr_err("%s Read Cancel\n", __func__);
             cancel_read = true;
             do_reading = 1;
@@ -971,11 +1071,36 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
                 p61_access_unlock(pn544_dev);
                 return -EBUSY; /* Device or resource busy */
             }
-        }else if (arg == 3) {
-            int ret = ese_cold_reset(ESE_COLD_RESET_SOURCE_NFC);
-            p61_access_unlock(pn544_dev);
-            return ret;
-        }else if (arg == 4) {
+        } else if (arg == 3) {
+            pr_info("%s : PN61_SET_SPI_PWR - Prio Session Start power on ese\n", __func__);
+            if ((current_state & (P61_STATE_SPI|P61_STATE_SPI_PRIO)) == 0) {
+                p61_update_access_state(pn544_dev, P61_STATE_SPI_PRIO, true);
+                if (current_state & P61_STATE_WIRED){
+                    if (pn544_dev->nfc_service_pid){
+                        pr_info("nfc service pid %s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
+                        /*signal_handler(P61_STATE_SPI_PRIO, pn544_dev->nfc_service_pid);*/
+                        dwp_OnOff(pn544_dev->nfc_service_pid, P61_STATE_SPI_PRIO);
+                    } else {
+                        pr_info(" invalid nfc service pid....signalling failed%s   ---- %ld", __func__, pn544_dev->nfc_service_pid);
+                    }
+                }
+                pn544_dev->spi_ven_enabled = true;
+                if (pn544_dev->chip_pwr_scheme != PN80T_EXT_PMU_SCHEME)
+                {
+#ifndef VEN_ALWAYS_ON
+                    if (pn544_dev->nfc_ven_enabled == false) {
+                        /* provide power to NFCC if, NFC service not provided */
+                        gpio_set_value(pn544_dev->ven_gpio, 1);
+                        msleep(10);
+                    }
+#endif
+                }
+            } else {
+                pr_info("%s : Prio Session Start power on ese failed \n", __func__);
+                p61_access_unlock(pn544_dev);
+                return -EBUSY; /* Device or resource busy */
+            }
+        } else if (arg == 4) {
             if (current_state & P61_STATE_SPI_PRIO)
             {
                 pr_info("%s : PN61_SET_SPI_PWR - Prio Session Ending...\n", __func__);
@@ -1013,14 +1138,6 @@ long  pn544_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
             } else if (current_state & P61_STATE_SPI_PRIO) {
                 p61_update_access_state(pn544_dev, P61_STATE_SPI_PRIO, false);
             }
-        } else if(arg == 7){
-          long ret;
-          set_force_reset(true);
-          ret = do_reset_protection(true);
-        } else if(arg == 8){
-          long ret;
-          set_force_reset(false);
-          ret = do_reset_protection(false);
         } else {
             pr_info("%s bad ese pwr arg %lu\n", __func__, arg);
             p61_access_unlock(pn544_dev);
@@ -1194,14 +1311,12 @@ static void secure_timer_workqueue(struct work_struct *Wq)
     return;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
-static void secure_timer_callback( unsigned long data )
-{
-(void)data;
+#ifdef LGE_NFC_FIX
+static void secure_timer_callback(struct timer_list * data )
 #else
-static void secure_timer_callback(struct timer_list *unused)
-{
+static void secure_timer_callback( unsigned long data )
 #endif
+{
     /* Flush and push the timer callback event to the bottom half(work queue)
     to be executed later, at a safer time */
     flush_workqueue(pn544_dev->pSecureTimerCbWq);
@@ -1223,12 +1338,14 @@ static long start_seccure_timer(unsigned long timer_value)
     /* Start the timer if timer value is non-zero */
     if(timer_value)
     {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
+
+#ifdef LGE_NFC_FIX
+        timer_setup( &secure_timer, secure_timer_callback, 0 );
+#else
         init_timer(&secure_timer);
         setup_timer( &secure_timer, secure_timer_callback, 0 );
-#else
-        timer_setup(&secure_timer, secure_timer_callback, 0);
 #endif
+
         pr_info("start_seccure_timer: timeout %lums (%lu)\n",timer_value, jiffies );
         ret = mod_timer( &secure_timer, jiffies + msecs_to_jiffies(timer_value));
         if (ret)
@@ -1469,7 +1586,6 @@ static int pn544_probe(struct i2c_client *client,
         }
     }
     /* init mutex and queues */
-    ese_reset_resource_init();
     init_waitqueue_head(&pn544_dev->read_wq);
     mutex_init(&pn544_dev->read_mutex);
     sema_init(&ese_access_sema, 1);
@@ -1478,7 +1594,7 @@ static int pn544_probe(struct i2c_client *client,
     pn544_dev->pSecureTimerCbWq = create_workqueue(SECURE_TIMER_WORK_QUEUE);
     INIT_WORK(&pn544_dev->wq_task, secure_timer_workqueue);
     pn544_dev->pn544_device.minor = MISC_DYNAMIC_MINOR;
-    pn544_dev->pn544_device.name = "sn100x";
+    pn544_dev->pn544_device.name = "pn547";
     pn544_dev->pn544_device.fops = &pn544_dev_fops;
 
     ret = misc_register(&pn544_dev->pn544_device);
@@ -1492,12 +1608,7 @@ static int pn544_probe(struct i2c_client *client,
     pr_info("%s : requesting IRQ %d\n", __func__, client->irq);
     pn544_dev->irq_enabled = true;
 #ifdef LGE_NFC_FIX
-    //wakeup_source_init(&nfc_wake_lock, "NFCWAKE");  //change wakeup_source_init() -> wakeup_source_register() by SM8350
-    nfc_wake_lock = wakeup_source_register(pn544_dev->pn544_device.this_device, "NFCWAKE");
-    if (!nfc_wake_lock) {
-        pr_err("%s : wakeup_source_register failed\n", __FILE__);
-        goto err_misc_register;
-    }
+    wakeup_source_init(&nfc_wake_lock, "NFCWAKE");
 
     ret = request_irq(client->irq, pn544_dev_irq_handler,
             IRQF_TRIGGER_RISING|IRQF_NO_SUSPEND, client->name, pn544_dev);
@@ -1518,11 +1629,6 @@ static int pn544_probe(struct i2c_client *client,
     gpio_set_value(pn544_dev->ven_gpio, 0);
     msleep(5);
     gpio_set_value(pn544_dev->ven_gpio, 1);
-#else
-    if (lge_get_boot_mode() != LGE_BOOT_MODE_CHARGERLOGO) {
-        msleep(5);
-        gpio_set_value(pn544_dev->ven_gpio, 1);
-    }
 #endif
     pr_info("PN544 IRQ : %d\nVEN : %d\nFIRM : %d\n",
             pn544_dev->irq_gpio, pn544_dev->ven_gpio, pn544_dev->firm_gpio);
@@ -1533,7 +1639,6 @@ static int pn544_probe(struct i2c_client *client,
     err_request_irq_failed:
     misc_deregister(&pn544_dev->pn544_device);
     err_misc_register:
-    ese_reset_resource_destroy();
     mutex_destroy(&pn544_dev->read_mutex);
     mutex_destroy(&pn544_dev->p61_state_mutex);
     kfree(pn544_dev);
@@ -1565,7 +1670,6 @@ static int pn544_remove(struct i2c_client *client)
     pn544_dev->p61_current_state = P61_STATE_INVALID;
     pn544_dev->nfc_ven_enabled = false;
     pn544_dev->spi_ven_enabled = false;
-    ese_reset_resource_destroy();
 
     if (pn544_dev->firm_gpio)
         gpio_free(pn544_dev->firm_gpio);
@@ -1575,13 +1679,13 @@ static int pn544_remove(struct i2c_client *client)
 }
 
 static const struct i2c_device_id pn544_id[] = {
-        { "sn100x", 0 },
+        { "pn547", 0 },
         { }
 };
 
 static struct of_device_id pn544_i2c_dt_match[] = {
     {
-        .compatible = "nxp,sn100x",
+        .compatible = "nxp,pn547",
     },
     {}
 };
@@ -1592,7 +1696,7 @@ static struct i2c_driver pn544_driver = {
         .remove     = pn544_remove,
         .driver     = {
                 .owner = THIS_MODULE,
-                .name  = "sn100x",
+                .name  = "pn547",
                 .of_match_table = pn544_i2c_dt_match,
         },
 };

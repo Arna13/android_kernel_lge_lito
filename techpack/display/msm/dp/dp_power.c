@@ -415,14 +415,6 @@ static void dp_power_set_gpio(struct dp_power_private *power, bool flip)
 		if (is_ds_connected()) {
 			pr_info("ds3 connected. invert flip\n");
 			config->value = !flip;
-
-			if(power->parser->lge_dp_aux_sel_inverse)	//VZW rev.b or rev.c
-			{
-				if(dp_power_find_gpio(config->gpio_name, "aux-sel"))
-				{
-					config->value = flip;
-				}
-			}
 		}
 #endif
 
@@ -472,14 +464,7 @@ static int dp_power_config_gpios(struct dp_power_private *power, bool flip,
 					gpio_set_value(config->gpio, 1);
 					gpio_free(config->gpio);
 				} else if (dp_power_find_gpio(config->gpio_name, "aux-sel")) {
-					if(power->parser->lge_dp_aux_sel_inverse)	//VZW rev.b or rev.c
-					{
-						gpio_set_value(config->gpio, 1);
-					}
-					else
-					{
-						gpio_set_value(config->gpio, 0);
-					}
+					gpio_set_value(config->gpio, 0);
 					gpio_free(config->gpio);
 				} else {
 					gpio_set_value(config->gpio, 0);

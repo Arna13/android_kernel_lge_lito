@@ -177,18 +177,9 @@ int backlight_device_set_brightness(struct backlight_device *bd,
 
 	mutex_lock(&bd->ops_lock);
 	if (bd->ops) {
-#ifdef CONFIG_LGE_PM
-		if (brightness > bd->props.max_brightness) {
-			pr_err("bl-debug] set_br : %lu, %lu, %d\n", brightness,
-				bd->props.max_brightness,
-				bd->thermal_brightness_limit);
-			rc = -EINVAL;
-		} else {
-#else
 		if (brightness > bd->props.max_brightness)
 			rc = -EINVAL;
 		else {
-#endif
 			pr_debug("set brightness to %lu\n", brightness);
 			bd->props.brightness = brightness;
 			rc = backlight_update_status(bd);
@@ -240,34 +231,7 @@ static ssize_t max_brightness_show(struct device *dev,
 
 	return sprintf(buf, "%d\n", bd->props.max_brightness);
 }
-#ifdef CONFIG_LGE_PM
-static ssize_t max_brightness_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	int rc;
-	struct backlight_device *bd = to_backlight_device(dev);
-	unsigned long brightness;
-
-	rc = kstrtoul(buf, 0, &brightness);
-	if (rc)
-		return rc;
-
-	bd->props.max_brightness = brightness;
-	bd->thermal_brightness_limit = bd->props.max_brightness;
-	pr_info("set max_brightness to %lu\n", bd->props.max_brightness);
-
-	brightness = (brightness <= bd->props.brightness) ?
-				bd->props.max_brightness :
-				bd->props.brightness;
-
-	rc = backlight_device_set_brightness(bd, brightness);
-
-	return rc ? rc : count;
-}
-static DEVICE_ATTR_RW(max_brightness);
-#else
 static DEVICE_ATTR_RO(max_brightness);
-#endif
 
 static ssize_t actual_brightness_show(struct device *dev,
 		struct device_attribute *attr, char *buf)

@@ -30,10 +30,6 @@ GZFLAGS		:=-9
 # Never generate .eh_frame
 KBUILD_CFLAGS	+= $(call cc-option,-fno-dwarf2-cfi-asm)
 
-ifeq ($(cc-name),clang)
-KBUILD_CFLAGS += -Wno-vectorizer-no-neon
-endif
-
 # This should work on most of the modern platforms
 KBUILD_DEFCONFIG := multi_v7_defconfig
 
@@ -44,10 +40,7 @@ KBUILD_CFLAGS	+= $(call cc-option,-mno-unaligned-access)
 endif
 
 ifeq ($(CONFIG_FRAME_POINTER),y)
-KBUILD_CFLAGS	+=-fno-omit-frame-pointer
-ifeq ($(CONFIG_CC_IS_GCC),y)
-KBUILD_CFLAGS += $(call cc-option,-mapcs,) $(call cc-option,-mno-sched-prolog,)
-endif
+KBUILD_CFLAGS  +=-fno-omit-frame-pointer $(call cc-option,-mapcs,) $(call cc-option,-mno-sched-prolog,)
 endif
 
 ifeq ($(CONFIG_CPU_BIG_ENDIAN),y)
@@ -121,10 +114,6 @@ endif
 
 ifeq ($(CONFIG_ARM_UNWIND),y)
 CFLAGS_ABI	+=-funwind-tables
-endif
-
-ifeq ($(CONFIG_CC_IS_CLANG),y)
-CFLAGS_ABI	+= -meabi gnu
 endif
 
 # Accept old syntax despite ".syntax unified"

@@ -15,19 +15,6 @@
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
 
-#define LIMIT_STATUS_POLLING	(15)
-extern int32_t lgit_s5kgw1_init_set_onsemi_ois(struct cam_ois_ctrl_t *o_ctrl);
-extern int lgit_s5kgw1_onsemi_ois_poll_ready(int limit);
-
-extern void msm_ois_create_sysfs(void);
-extern void msm_ois_destroy_sysfs(void);
-
-#ifdef CONFIG_MACH_LGE
-extern int msm_stopGyroThread(void);
-extern int parse_ois_userdata(struct cam_cmd_ois_userdata *ois_userdata,
-		struct cam_ois_ctrl_t *o_ctrl);
-#endif
-
 int32_t cam_ois_construct_default_power_setting(
 	struct cam_sensor_power_ctrl_t *power_info)
 {
@@ -168,12 +155,6 @@ static int cam_ois_power_up(struct cam_ois_ctrl_t *o_ctrl)
 	if (rc)
 		CAM_ERR(CAM_OIS, "cci_init failed: rc: %d", rc);
 
-	CAM_ERR(CAM_OIS, "OIS powered up %d", o_ctrl->soc_info.index);
-/* LGE_CHANGE_S, OIS AAT, hongs.lee@lge.com */
-	if(o_ctrl->is_ois_aat) {
-	msm_ois_create_sysfs(); /* LGE_CHANGE, OIS AAT, hongs.lee@lge.com */
-	}
-/* LGE_CHANGE_E, OIS AAT, hongs.lee@lge.com */
 	return rc;
 }
 
@@ -196,19 +177,11 @@ static int cam_ois_power_down(struct cam_ois_ctrl_t *o_ctrl)
 		return -EINVAL;
 	}
 
-#ifdef CONFIG_MACH_LGE
-	if(o_ctrl->ois_thread_running == true) {
-		msm_stopGyroThread();
-		o_ctrl->ois_thread_running = false;
-	}
-#endif
-
 	soc_private =
 		(struct cam_ois_soc_private *)o_ctrl->soc_info.soc_private;
 	power_info = &soc_private->power_info;
 	soc_info = &o_ctrl->soc_info;
 
-	CAM_ERR(CAM_OIS, "OIS powered down %d", o_ctrl->soc_info.index);
 	if (!power_info) {
 		CAM_ERR(CAM_OIS, "failed: power_info %pK", power_info);
 		return -EINVAL;
@@ -222,11 +195,6 @@ static int cam_ois_power_down(struct cam_ois_ctrl_t *o_ctrl)
 
 	camera_io_release(&o_ctrl->io_master_info);
 
-/* LGE_CHANGE_S, OIS AAT, hongs.lee@lge.com */
-	if(o_ctrl->is_ois_aat) {
-	msm_ois_destroy_sysfs();
-	}
-/* LGE_CHANGE_E, OIS AAT, hongs.lee@lge.com */
 	return rc;
 }
 
@@ -235,7 +203,7 @@ static int cam_ois_apply_settings(struct cam_ois_ctrl_t *o_ctrl,
 {
 	struct i2c_settings_list *i2c_list;
 	int32_t rc = 0;
-	//uint32_t i, size; /* LGE_CHANGE, use LGE POLL function, 2018-01-16, hongs.lee@lge.com */
+	uint32_t i, size;
 
 	if (o_ctrl == NULL || i2c_set == NULL) {
 		CAM_ERR(CAM_OIS, "Invalid Args");
@@ -258,13 +226,6 @@ static int cam_ois_apply_settings(struct cam_ois_ctrl_t *o_ctrl,
 				return rc;
 			}
 		} else if (i2c_list->op_code == CAM_SENSOR_I2C_POLL) {
-/* LGE_CHANGE_S, use LGE POLL function, 2018-01-16, hongs.lee@lge.com */
-            rc = lgit_s5kgw1_onsemi_ois_poll_ready(LIMIT_STATUS_POLLING);
-			if (rc < 0) {
-				CAM_ERR(CAM_OIS, "i2c poll apply setting Fail");
-				return rc;
-			}
-#if 0 // QCT original , need to block code for judy
 			size = i2c_list->i2c_settings.size;
 			for (i = 0; i < size; i++) {
 				rc = camera_io_dev_poll(
@@ -281,9 +242,6 @@ static int cam_ois_apply_settings(struct cam_ois_ctrl_t *o_ctrl,
 					return rc;
 				}
 			}
-#endif
-/* LGE_CHANGE_E, use LGE POLL function, 2018-01-16, hongs.lee@lge.com */
-
 		}
 	}
 
@@ -309,7 +267,6 @@ static int cam_ois_slaveInfo_pkt_parser(struct cam_ois_ctrl_t *o_ctrl,
 			ois_info->slave_addr >> 1;
 		o_ctrl->ois_fw_flag = ois_info->ois_fw_flag;
 		o_ctrl->is_ois_calib = ois_info->is_ois_calib;
-		o_ctrl->is_ois_aat = ois_info->is_ois_aat; /* LGE_CHANGE_S, OIS AAT, hongs.lee@lge.com */
 		memcpy(o_ctrl->ois_name, ois_info->ois_name, OIS_NAME_LEN);
 		o_ctrl->ois_name[OIS_NAME_LEN - 1] = '\0';
 		o_ctrl->io_master_info.cci_client->retries = 3;
@@ -477,7 +434,7 @@ static int cam_ois_pkt_parse(struct cam_ois_ctrl_t *o_ctrl, void *arg)
 	struct cam_ois_soc_private     *soc_private =
 		(struct cam_ois_soc_private *)o_ctrl->soc_info.soc_private;
 	struct cam_sensor_power_ctrl_t  *power_info = &soc_private->power_info;
-	struct cam_cmd_ois_userdata *ois_userdata; /* LGE_CHANGE, OIS Bring up, 2019-10-07, yonghwan.lym@lge.com */
+
 #ifdef CONFIG_MACH_LGE
 	struct v4l2_subdev *cci_subdev = cam_cci_get_subdev(CCI_DEVICE_0);
 	struct cci_device *cci_dev = v4l2_get_subdevdata(cci_subdev);
@@ -641,7 +598,7 @@ static int cam_ois_pkt_parse(struct cam_ois_ctrl_t *o_ctrl, void *arg)
 				goto pwr_dwn;
 			}
 		}
-#ifndef CONFIG_MACH_LGE
+
 		rc = cam_ois_apply_settings(o_ctrl, &o_ctrl->i2c_init_data);
 		if ((rc == -EAGAIN) &&
 			(o_ctrl->io_master_info.master_type == CCI_MASTER)) {
@@ -651,9 +608,6 @@ static int cam_ois_pkt_parse(struct cam_ois_ctrl_t *o_ctrl, void *arg)
 			rc = cam_ois_apply_settings(o_ctrl,
 				&o_ctrl->i2c_init_data);
 		}
-#else
-		rc = lgit_s5kgw1_init_set_onsemi_ois(o_ctrl);
-#endif
 		if (rc < 0) {
 			CAM_ERR(CAM_OIS,
 				"Cannot apply Init settings: rc = %d",
@@ -718,45 +672,6 @@ static int cam_ois_pkt_parse(struct cam_ois_ctrl_t *o_ctrl, void *arg)
 			return rc;
 		}
 		break;
-
-#ifdef CONFIG_MACH_LGE
-	case CAM_OIS_PACKET_OPCODE_OIS_USERDATA:
-		if (o_ctrl->cam_ois_state < CAM_OIS_CONFIG) {
-			rc = -EINVAL;
-			CAM_WARN(CAM_OIS,
-					"Not in right state to parse userdata OIS: %d",
-					o_ctrl->cam_ois_state);
-			return rc;
-		}
-		offset = (uint32_t *)&csl_packet->payload;
-		offset += (csl_packet->cmd_buf_offset / sizeof(uint32_t));
-		cmd_desc = (struct cam_cmd_buf_desc *)(offset);
-
-		total_cmd_buf_in_bytes = cmd_desc[0].length;
-
-		if (!total_cmd_buf_in_bytes) {
-			CAM_ERR(CAM_OIS, "No total cmd buf bytes !!");
-			break;
-		}
-		rc = cam_mem_get_cpu_buf(cmd_desc[0].mem_handle,
-				&generic_ptr, &len_of_buff);
-		if (rc < 0) {
-			CAM_ERR(CAM_OIS, "Failed to get cpu buf");
-			return rc;
-		}
-		cmd_buf = (uint32_t *)generic_ptr;
-		if (!cmd_buf) {
-			CAM_ERR(CAM_OIS, "invalid cmd buf");
-			return -EINVAL;
-		}
-		cmd_buf += cmd_desc[0].offset / sizeof(uint32_t);
-		cmm_hdr = (struct common_header *)cmd_buf;
-
-		ois_userdata = (struct cam_cmd_ois_userdata *)cmd_buf;
-		parse_ois_userdata(ois_userdata, o_ctrl);
-		break;
-#endif
-
 	case CAM_OIS_PACKET_OPCODE_READ: {
 		struct cam_buf_io_cfg *io_cfg;
 		struct i2c_settings_array i2c_read_settings;

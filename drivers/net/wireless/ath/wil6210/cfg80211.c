@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: ISC
 /*
  * Copyright (c) 2012-2017 Qualcomm Atheros, Inc.
- * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/etherdevice.h>
@@ -1034,7 +1034,7 @@ static int wil_cfg80211_change_iface(struct wiphy *wiphy,
 	struct wil6210_vif *vif = ndev_to_vif(ndev);
 	struct wireless_dev *wdev = vif_to_wdev(vif);
 	int rc;
-	bool compressed_rx_status, fw_reset = false;
+	bool fw_reset = false;
 
 	wil_dbg_misc(wil, "change_iface: type=%d\n", type);
 
@@ -1045,13 +1045,6 @@ static int wil_cfg80211_change_iface(struct wiphy *wiphy,
 			return rc;
 		}
 	}
-
-	/* monitor mode uses uncompressed rx status to get phy statistics */
-	compressed_rx_status = wil->use_compressed_rx_status;
-	if (type == NL80211_IFTYPE_MONITOR)
-		wil->use_compressed_rx_status = false;
-	else if (wdev->iftype == NL80211_IFTYPE_MONITOR)
-		wil->use_compressed_rx_status =  true;
 
 	/* do not reset FW when there are active VIFs,
 	 * because it can cause significant disruption
@@ -1066,7 +1059,7 @@ static int wil_cfg80211_change_iface(struct wiphy *wiphy,
 		mutex_unlock(&wil->mutex);
 
 		if (rc)
-			goto fail;
+			return rc;
 		fw_reset = true;
 	}
 
@@ -1081,8 +1074,7 @@ static int wil_cfg80211_change_iface(struct wiphy *wiphy,
 			wil->monitor_flags = params->flags;
 		break;
 	default:
-		rc = -EOPNOTSUPP;
-		goto fail;
+		return -EOPNOTSUPP;
 	}
 
 	if (vif->mid != 0 && wil_has_active_ifaces(wil, true, false)) {
@@ -1090,18 +1082,14 @@ static int wil_cfg80211_change_iface(struct wiphy *wiphy,
 			wil_vif_prepare_stop(vif);
 		rc = wmi_port_delete(wil, vif->mid);
 		if (rc)
-			goto fail;
+			return rc;
 		rc = wmi_port_allocate(wil, vif->mid, ndev->dev_addr, type);
 		if (rc)
-			goto fail;
+			return rc;
 	}
 
 	wdev->iftype = type;
 	return 0;
-
-fail:
-	wil->use_compressed_rx_status = compressed_rx_status;
-	return rc;
 }
 
 static int wil_cfg80211_scan(struct wiphy *wiphy,
@@ -1390,7 +1378,7 @@ static int wil_ft_connect(struct wiphy *wiphy,
 	if (test_bit(WMI_FW_CAPABILITY_CHANNEL_BONDING, wil->fw_capabilities))
 		if (wil->force_edmg_channel) {
 			rc = wil_spec2wmi_ch(wil->force_edmg_channel,
-					     &auth_cmd.edmg_channel);
+					     &auth_cmd.channel);
 			if (rc)
 				wil_err(wil, "FT: wmi channel for channel %d not found",
 					wil->force_edmg_channel);
@@ -2760,9 +2748,8 @@ static int wil_cfg80211_set_power_mgmt(struct wiphy *wiphy,
 	struct wil6210_priv *wil = wiphy_to_wil(wiphy);
 	enum wmi_ps_profile_type ps_profile;
 
-	if (wil->vr_profile != WMI_VR_PROFILE_DISABLED &&
-	    wil->vr_profile != WMI_VR_PROFILE_COMMON_STA_PS)
-		/* disallow in non-power management VR mode */
+	if (wil->vr_profile != WMI_VR_PROFILE_DISABLED)
+		/* disallow in VR mode */
 		return -EINVAL;
 
 	wil_dbg_misc(wil, "enabled=%d, timeout=%d\n",

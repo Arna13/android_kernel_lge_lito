@@ -14,11 +14,6 @@ ifeq ($(CONFIG_MACH_LITO_CAYMANLM_DCM_JP),y)
 DTS_TARGET := lito-caymanlm_dcm_jp
 endif
 
-# Per Device
-ifeq ($(CONFIG_MACH_LITO_CAYMANLM_SB_JP),y)
-DTS_TARGET := lito-caymanlm_sb_jp
-endif
-
 # Per Platform
 ifeq ($(CONFIG_MACH_LITO_WINGLM),y)
 DTS_PROJECT := lito-winglm
@@ -37,36 +32,6 @@ endif
 # Per Device
 ifeq ($(CONFIG_MACH_LITO_VICTORIALM_LAO_COM),y)
 DTS_TARGET := lito-victorialm_lao_com
-endif
-
-# Per Platform
-ifeq ($(CONFIG_MACH_LITO_ACELM),y)
-DTS_PROJECT := lito-acelm
-endif
-
-# Per Device
-ifeq ($(CONFIG_MACH_LITO_ACELM_LAO_COM),y)
-DTS_TARGET := lito-acelm_lao_com
-endif
-
-# Per Platform
-ifeq ($(CONFIG_MACH_LAGOON_ACEXLM),y)
-DTS_PROJECT := lagoon-acexlm
-endif
-
-# Per Device
-ifeq ($(CONFIG_MACH_LAGOON_ACEXLM_LAO_COM),y)
-DTS_TARGET := lagoon-acexlm_lao_com
-endif
-
-# Per Platform
-ifeq ($(CONFIG_MACH_LAGOON_SMASHJLM),y)
-DTS_PROJECT := lagoon-smashjlm
-endif
-
-# Per Device
-ifeq ($(CONFIG_MACH_LAGOON_SMASHJLM_COM1_JP),y)
-DTS_TARGET := lagoon-smashjlm_com1_jp
 endif
 
 ALL_DTS := $(notdir $(wildcard echo $(srctree)/$(src)/$(DTS_PROJECT)/$(DTS_TARGET)/*.dts))

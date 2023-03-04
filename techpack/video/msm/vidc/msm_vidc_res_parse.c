@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  */
 
 #include <asm/dma-iommu.h>
-#include <linux/dma-iommu.h>
 #include <linux/iommu.h>
 #include <linux/of.h>
 #include <linux/slab.h>
@@ -586,6 +585,10 @@ static int msm_vidc_load_regulator_table(
 		rinfo->has_hw_power_collapse = of_property_read_bool(
 			regulator_node, "qcom,support-hw-trigger");
 
+		if ((res->vpu_ver == VPU_VERSION_IRIS2_1)
+			&& (!strcmp(rinfo->name, "vcodec")))
+			rinfo->has_hw_power_collapse = 0;
+
 		d_vpr_h("Found regulator %s: h/w collapse = %s\n",
 				rinfo->name,
 				rinfo->has_hw_power_collapse ? "yes" : "no");
@@ -903,6 +906,7 @@ int read_platform_resources_from_dt(
 	if (rc)
 		return rc;
 
+
 	INIT_LIST_HEAD(&res->context_banks);
 
 	res->firmware_base = (phys_addr_t)firmware_base;
@@ -1010,13 +1014,6 @@ static int msm_vidc_setup_context_bank(struct msm_vidc_platform_resources *res,
 
 	 cb->domain = iommu_get_domain_for_dev(cb->dev);
 
-	/*
-	 * When memory is fragmented, below configuration increases the
-	 * possibility to get a mapping for buffer in the configured CB.
-	 */
-	if (!strcmp(cb->name, "venus_ns"))
-		iommu_dma_enable_best_fit_algo(cb->dev);
-
 	 /*
 	 * configure device segment size and segment boundary to ensure
 	 * iommu mapping returns one mapping (which is required for partial
@@ -1042,6 +1039,7 @@ int msm_vidc_smmu_fault_handler(struct iommu_domain *domain,
 		struct device *dev, unsigned long iova, int flags, void *token)
 {
 	struct msm_vidc_core *core = token;
+	struct msm_vidc_inst *inst;
 
 	if (!domain || !core) {
 		d_vpr_e("%s: invalid params %pK %pK\n",
@@ -1060,8 +1058,12 @@ int msm_vidc_smmu_fault_handler(struct iommu_domain *domain,
 
 	d_vpr_e("%s: faulting address: %lx\n", __func__, iova);
 
+	mutex_lock(&core->lock);
+	list_for_each_entry(inst, &core->instances, list) {
+		msm_comm_print_inst_info(inst);
+	}
 	core->smmu_fault_handled = true;
-	msm_comm_print_insts_info(core);
+	mutex_unlock(&core->lock);
 	/*
 	 * Return -EINVAL to elicit the default behaviour of smmu driver.
 	 * If we return -EINVAL, then smmu driver assumes page fault handler
@@ -1091,10 +1093,7 @@ static int msm_vidc_populate_context_bank(struct device *dev,
 	}
 
 	INIT_LIST_HEAD(&cb->list);
-
-	mutex_lock(&core->resources.cb_lock);
 	list_add_tail(&cb->list, &core->resources.context_banks);
-	mutex_unlock(&core->resources.cb_lock);
 
 	rc = of_property_read_string(np, "label", &cb->name);
 	if (rc) {
@@ -1174,10 +1173,7 @@ static int msm_vidc_populate_legacy_context_bank(
 			return -ENOMEM;
 		}
 		INIT_LIST_HEAD(&cb->list);
-
-		mutex_lock(&res->cb_lock);
 		list_add_tail(&cb->list, &res->context_banks);
-		mutex_unlock(&res->cb_lock);
 
 		ctx_node = of_parse_phandle(domains_child_node,
 				"qcom,vidc-domain-phandle", 0);

@@ -1320,7 +1320,7 @@ static void tune_display(struct device *dev, struct tune_data_sel *sel, int type
 	int offset = 0;
 
 	switch (type) {
-		case U3_M1_RAWDATA_TEST:
+		case U3_M1_RAWDATA_TEST:;
 			offset += snprintf(log_buf+offset, tc_tune_code_size-offset, "U3 M1 tune: ");
 			offset += tune_u8_print(LOFT_CH_NUM, sel->m1.m1_tune_sel_code, log_buf, offset);
 			write_file(dev, log_buf, TIME_INFO_SKIP);

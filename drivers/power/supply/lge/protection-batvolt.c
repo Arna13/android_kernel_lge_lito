@@ -35,22 +35,19 @@ static struct protection_batvolt_struct {
 	struct voter_entry	bvp_voter;
 	struct delayed_work	bvp_dwork;
 	/* thresholds */
-	bool is_three_step_batt;
-	int three_step_max_soc;
-	int batvolt_pos;
-	int threshold_vbat_limit[2];
-	int threshold_vbat_clear[2];
-	int threshold_ibat_rated[2];
-	int threshold_cv_ibat_rated;
+	int			threshold_vbat_limit;
+	int			threshold_vbat_clear;
+	int			threshold_ibat_rated;
+	int			threshold_cv_ibat_rated;
 	/* dt contents */
-	int step_ibat_ma;
-	int step_poll_ms;
+	int			step_ibat_ma;
+	int			step_poll_ms;
 	/* IR compensation Vbatt */
 	bool irc_enabled;
 	bool is_irc_full;  /* whether irc is supported with full range */
 	int irc_resistance;
+	int threshold_ibat_margin;
 	/* multi - fv(float voltage) */
-	bool is_first_polling;
 	bool multi_fv_enabled;
 	int multi_fv_mvolt[MFV_MAX];
 } bvp_me = {
@@ -59,12 +56,9 @@ static struct protection_batvolt_struct {
 	.bvp_dwork	= __DELAYED_WORK_INITIALIZER(bvp_me.bvp_dwork,
 		protection_batvolt_work, 0),
 
-	.is_three_step_batt = false,
-	.three_step_max_soc = 100,  /* it means no limit */
-	.batvolt_pos = 0,
-	.threshold_vbat_limit		= {BVP_NOTREADY, },
-	.threshold_vbat_clear		= {BVP_NOTREADY, },
-	.threshold_ibat_rated		= {BVP_NOTREADY, },
+	.threshold_vbat_limit		= BVP_NOTREADY,
+	.threshold_vbat_clear		= BVP_NOTREADY,
+	.threshold_ibat_rated		= BVP_NOTREADY,
 	.threshold_cv_ibat_rated	= BVP_NOTREADY,
 
 	.step_ibat_ma		= BVP_NOTREADY,
@@ -73,8 +67,8 @@ static struct protection_batvolt_struct {
 	.irc_enabled = false,
 	.is_irc_full = false,
 	.irc_resistance = 0,
+	.threshold_ibat_margin = 0,
 
-	.is_first_polling = false,
 	.multi_fv_enabled = false,
 	.multi_fv_mvolt = {4450, 4430},
 };
@@ -92,25 +86,19 @@ static bool set_multi_fv(int mode)
 		VENEER_FEED_CHARGER_TYPE, &charger);
 	if ((charger == CHARGING_SUPPLY_TYPE_UNKNOWN) ||
 		(charger == CHARGING_SUPPLY_TYPE_FLOAT)   ||
-		//(charger == CHARGING_SUPPLY_TYPE_NONE)    ||
+		(charger == CHARGING_SUPPLY_TYPE_NONE)    ||
 		(charger == CHARGING_SUPPLY_USB_2P0)      ||
 		(charger == CHARGING_SUPPLY_USB_3PX)      ||
 		(charger == CHARGING_SUPPLY_FACTORY_56K)  ||
 		(charger == CHARGING_SUPPLY_FACTORY_130K) ||
 		(charger == CHARGING_SUPPLY_FACTORY_910K) ||
 		(charger == CHARGING_SUPPLY_WIRELESS_5W)  ||
-		(charger == CHARGING_SUPPLY_WIRELESS_9W)  ||
-		(charger == CHARGING_SUPPLY_WIRELESS_15W) ){
+		(charger == CHARGING_SUPPLY_WIRELESS_9W)  ){
         mode_local = MFV_CV;
     }
 
 	rc = bvp_me.get_veneer_param(
 		VENEER_FEED_BATT_PROFILE_FV_VOTER, &batt_profile_fv);
-
-//	pr_batvolt(UPDATE, "fv=%d, multi-fv=%d, mode=%d, local=%d, charger=%d\n",
-//				batt_profile_fv, bvp_me.multi_fv_mvolt[mode_local],
-//				mode, mode_local, charger);
-
 	if (!rc && batt_profile_fv > 0) {
 		if (batt_profile_fv != bvp_me.multi_fv_mvolt[mode_local]) {
 			rc = bvp_me.set_veneer_param(
@@ -140,7 +128,7 @@ static void protection_batvolt_work(struct work_struct *work)
 		bvp_me.irc_resistance = irc_resistance % 1000;
 	}
 	if (bvp_me.get_veneer_param(VENEER_FEED_CAPACITY, &ui_soc))
-		ui_soc = 100;
+		ui_soc = 0;
 
 	if (bvp_me.bvp_get(&vbat_now, &icap_now, &ibat_now, &chg_now)) {
 		if (irc_enabled
@@ -148,37 +136,23 @@ static void protection_batvolt_work(struct work_struct *work)
 			&& bvp_me.irc_resistance > 0
 			&& vbat_now <= MAX_IRC_VOLTAGE ) {
 			virc_new = vbat_now - ((ibat_now * bvp_me.irc_resistance) / 1000);
-			if (!bvp_me.is_irc_full &&
-				(ibat_now < bvp_me.threshold_ibat_rated[bvp_me.batvolt_pos]))
+			if (!bvp_me.is_irc_full && (ibat_now < bvp_me.threshold_ibat_rated))
 				virc_new = vbat_now;
 
 			pr_batvolt(UPDATE,
 				"IR Compensated(res=%d, %d): "
-				"virc=%d(-%d), vbatt=%d, ibat=%d, icap=%d, imax=%d\n",
-				bvp_me.irc_resistance, irc_resistance, virc_new,
-				vbat_now - virc_new, vbat_now, ibat_now, icap_now,
-				bvp_me.threshold_ibat_rated[bvp_me.batvolt_pos]);
+				"virc=%d(-%d), vbatt=%d, ibat=%d, icap=%d, isix=%d\n",
+				bvp_me.irc_resistance, irc_resistance, virc_new, vbat_now - virc_new, vbat_now,
+				ibat_now, icap_now, bvp_me.threshold_ibat_rated);
+
 		} else
 			virc_new = vbat_now;
 
-		/* transition batvolt posistion */
-		if (bvp_me.is_three_step_batt) {
-			if (virc_new > bvp_me.threshold_vbat_limit[1])
-				bvp_me.batvolt_pos = 1;
-			else
-				bvp_me.batvolt_pos = 0;
-		}
-
-		if (bvp_me.is_three_step_batt && bvp_me.batvolt_pos == 1
-		    && virc_new <= bvp_me.threshold_vbat_clear[1])
-				bvp_me.batvolt_pos = 0;
-
-		if (virc_new <= bvp_me.threshold_vbat_limit[bvp_me.batvolt_pos]) {
-			pr_batvolt(VERBOSE, "Under voltage (%d, lim=%d)\n",
-					virc_new, bvp_me.threshold_vbat_limit[bvp_me.batvolt_pos]);
+		if (virc_new <= bvp_me.threshold_vbat_limit) {
+			pr_batvolt(VERBOSE, "Under voltage (%d)\n", virc_new);
 
 			if (veneer_voter_enabled(&bvp_me.bvp_voter)
-				&& virc_new <= bvp_me.threshold_vbat_clear[0]) {
+				&& virc_new <= bvp_me.threshold_vbat_clear) {
 				pr_batvolt(UPDATE, "Clear batvolt protection\n");
 				veneer_voter_release(&bvp_me.bvp_voter);
 			}
@@ -187,9 +161,9 @@ static void protection_batvolt_work(struct work_struct *work)
 		}
 
 		if (chg_now != POWER_SUPPLY_CHARGE_TYPE_TAPER
-			&& icap_now <= bvp_me.threshold_ibat_rated[bvp_me.batvolt_pos]) {
-			pr_batvolt(VERBOSE, "Under C-rate (%d, lim=%d)\n",
-					icap_now, bvp_me.threshold_ibat_rated[bvp_me.batvolt_pos]);
+			&& icap_now <=
+				(bvp_me.threshold_ibat_rated - bvp_me.threshold_ibat_margin)) {
+			pr_batvolt(VERBOSE, "Under C-rate (%d)\n", icap_now);
 			goto done;
 		}
 
@@ -213,66 +187,51 @@ static void protection_batvolt_work(struct work_struct *work)
 	}
 
 	icap_new = (icap_now - step_ibat) / step_ibat * step_ibat;
-	if (bvp_me.is_three_step_batt && ui_soc > bvp_me.three_step_max_soc) {
-		pr_batvolt(UPDATE,
-			"soc now = %d(limit=%d), icap_new=%d(limit=%d)\n",
-				ui_soc, bvp_me.three_step_max_soc,
-				icap_new, bvp_me.threshold_ibat_rated[0]);
-		icap_new = min(icap_new, bvp_me.threshold_ibat_rated[0]);
-	}
 	veneer_voter_set(&bvp_me.bvp_voter, icap_new);
-
-	pr_batvolt(UPDATE,
-			"Condition : %dmV, %dmA, chg type %d => "
-			"Reduce IBAT to %d(pos=%d, limit=%d)\n",
-			virc_new, icap_now, chg_now, icap_new, bvp_me.batvolt_pos,
-			bvp_me.threshold_ibat_rated[bvp_me.batvolt_pos]);
-done:
+	/*Need to update :add checking charging_step*/
+#ifdef CONFIG_QPNP_QG
+	if (ui_soc >= 94)
+#else
 	if (ui_soc >= 100)
+#endif
 		set_multi_fv(MFV_CV);
-	else if (bvp_me.is_first_polling)
+	else
 		set_multi_fv(MFV_CC);
 
-	bvp_me.is_first_polling = false;
-
-	schedule_delayed_work(
-		to_delayed_work(work), msecs_to_jiffies(bvp_me.step_poll_ms));
+	pr_batvolt(UPDATE, "Condition : %dmv, %dma, chg type %d => Reduce IBAT to %d\n",
+		virc_new, icap_now, chg_now, icap_new);
+done:
+	/*Need to update :add checking charging_step*/
+#ifdef CONFIG_QPNP_QG
+	if (ui_soc >= 94)
+#else
+	if (ui_soc >= 100)
+#endif
+		set_multi_fv(MFV_CV);
+	schedule_delayed_work(to_delayed_work(work), msecs_to_jiffies(bvp_me.step_poll_ms));
 	return;
 }
 
-void protection_batvolt_refresh(bool is_charging)
-{
+void protection_batvolt_refresh(bool is_charging) {
 	static bool is_started = false;
-	int ui_soc = 0;
 
-	bool is_ready =
-		bvp_me.threshold_vbat_limit[bvp_me.batvolt_pos] != BVP_NOTREADY	&&
-		bvp_me.threshold_ibat_rated[bvp_me.batvolt_pos] != BVP_NOTREADY &&
-		is_charging;
+	bool is_ready = bvp_me.threshold_vbat_limit != BVP_NOTREADY
+		&& bvp_me.threshold_ibat_rated != BVP_NOTREADY
+		&& is_charging;
 
 	if (is_ready) {
 		if (!is_started) {
-			schedule_delayed_work(&bvp_me.bvp_dwork, msecs_to_jiffies(1000));
+			schedule_delayed_work(&bvp_me.bvp_dwork, 0);
 			is_started = true;
-			bvp_me.is_first_polling = true;
 		}
 		else
 			; // Skip to handle BVP
 	}
 	else {
-		if (bvp_me.get_veneer_param(VENEER_FEED_CAPACITY, &ui_soc))
-			ui_soc = 100;
-
-		if (ui_soc >= 100)
-			set_multi_fv(MFV_CV);
-		else
-			set_multi_fv(MFV_CC);
-
 		veneer_voter_release(&bvp_me.bvp_voter);
+		set_multi_fv(MFV_CC);
 		cancel_delayed_work_sync(&bvp_me.bvp_dwork);
 		is_started = false;
-		bvp_me.batvolt_pos = 0;
-		bvp_me.is_first_polling = false;
 	}
 }
 
@@ -281,91 +240,23 @@ bool protection_batvolt_create(struct device_node* dnode, int mincap,
 	int (*get_veneer_param)(int id, int *val),
 	int (*set_veneer_param)(int id, int val)
 ){
-	int ret = 0, threshold_cv_ibat_pct = 0;
-	int threshold_ibat_pct[2] = {0, };
+	int ret = 0, threshold_ibat_pct = 0, threshold_cv_ibat_pct = 0;
 	int max_irc_mohm = 0;
 	pr_debugmask = ERROR | UPDATE;
 
-	bvp_me.is_three_step_batt =
-			of_property_read_bool(dnode, "lge,three-step-battery");
-
-	if (bvp_me.is_three_step_batt) {
-		ret = of_property_read_s32(dnode,
-				"lge,three-step-max-soc",
-				&bvp_me.three_step_max_soc);
-		if (ret < 0) {
-			pr_batvolt(ERROR,
-				"Failed to read 'lge,three-step-max-soc' ret=%d\n", ret);
-			goto destroy;
-		}
-
-		ret = of_property_read_u32_array(dnode,
-				"lge,threshold-vbat-limit",
-				bvp_me.threshold_vbat_limit, 2);
-		if (ret < 0) {
-			pr_batvolt(ERROR,
-				"Failed to read 'lge,threshold-vbat-limit' ret=%d\n", ret);
-			goto destroy;
-		}
-
-		ret = of_property_read_u32_array(dnode,
-				"lge,threshold-vbat-clear",
-				bvp_me.threshold_vbat_clear, 2);
-		if (ret < 0) {
-			pr_batvolt(ERROR,
-				"Failed to read 'lge,threshold-vbat-clear' ret=%d\n", ret);
-			goto destroy;
-		}
-
-		ret = of_property_read_u32_array(dnode,
-				"lge,threshold-ibat-pct",
-				threshold_ibat_pct, 2);
-		if (ret < 0) {
-			pr_batvolt(ERROR,
-				"Failed to read 'lge,threshold-ibat-pct' ret=%d\n", ret);
-			goto destroy;
-		}
-		else {
-			bvp_me.threshold_ibat_rated[0] = mincap * threshold_ibat_pct[0] / 100;
-			bvp_me.threshold_ibat_rated[1] = mincap * threshold_ibat_pct[1] / 100;
-		}
+	/* Parse device tree */
+	ret = of_property_read_s32(dnode, "lge,threshold-ibat-pct", &threshold_ibat_pct);
+	if (ret < 0) {
+		pr_batvolt(ERROR, "Failed to read 'lge,threshold-ibat-pct' ret=%d\n", ret);
+		goto destroy;
 	}
-	else {
-		/* Parse device tree */
-		ret = of_property_read_s32(dnode,
-				"lge,threshold-vbat-limit",
-				&bvp_me.threshold_vbat_limit[0]);
-		if (ret < 0) {
-			pr_batvolt(ERROR,
-				"Failed to read 'lge,threshold-vbat-limit' ret=%d\n", ret);
-			goto destroy;
-		} else {
-			bvp_me.threshold_vbat_limit[1] = bvp_me.threshold_vbat_limit[0];
-		}
+	else
+		bvp_me.threshold_ibat_rated = mincap * threshold_ibat_pct / 100;
 
-		ret = of_property_read_s32(dnode,
-				"lge,threshold-vbat-clear",
-				&bvp_me.threshold_vbat_clear[0]);
-		if (ret < 0) {
-			pr_batvolt(ERROR,
-				"Failed to read 'lge,threshold-vbat-clear' ret=%d\n", ret);
-			goto destroy;
-		} else {
-			bvp_me.threshold_vbat_clear[1] = bvp_me.threshold_vbat_clear[0];
-		}
-
-		ret = of_property_read_s32(dnode,
-				"lge,threshold-ibat-pct",
-				&threshold_ibat_pct[0]);
-		if (ret < 0) {
-			pr_batvolt(ERROR,
-				"Failed to read 'lge,threshold-ibat-pct' ret=%d\n", ret);
-			goto destroy;
-		}
-		else {
-			bvp_me.threshold_ibat_rated[0] = mincap * threshold_ibat_pct[0] / 100;
-			bvp_me.threshold_ibat_rated[1] = mincap * threshold_ibat_pct[0] / 100;
-		}
+	ret = of_property_read_s32(dnode, "lge,threshold-ibat-margin", &bvp_me.threshold_ibat_margin);
+	if (ret < 0) {
+		pr_batvolt(ERROR, "Failed to read 'lge,threshold-ibat-margin' ret=%d\n", ret);
+		bvp_me.threshold_ibat_margin = 0;
 	}
 
 	ret = of_property_read_s32(dnode, "lge,threshold-cv-ibat-pct", &threshold_cv_ibat_pct);
@@ -376,6 +267,16 @@ bool protection_batvolt_create(struct device_node* dnode, int mincap,
 	else
 		bvp_me.threshold_cv_ibat_rated = mincap * threshold_cv_ibat_pct / 100;
 
+	ret = of_property_read_s32(dnode, "lge,threshold-vbat-limit", &bvp_me.threshold_vbat_limit);
+	if (ret < 0) {
+		pr_batvolt(ERROR, "Failed to read 'lge,threshold-vbat-limit' ret=%d\n", ret);
+		goto destroy;
+	}
+	ret = of_property_read_s32(dnode, "lge,threshold-vbat-clear", &bvp_me.threshold_vbat_clear);
+	if (ret < 0) {
+		pr_batvolt(ERROR, "Failed to read 'lge,threshold-vbat-clear' ret=%d\n", ret);
+		goto destroy;
+	}
 	ret = of_property_read_s32(dnode, "lge,step-ibat-ma", &bvp_me.step_ibat_ma);
 	if (ret < 0) {
 		pr_batvolt(ERROR, "Failed to read 'lge,step-ibat-ma' ret=%d\n", ret);
@@ -399,7 +300,7 @@ bool protection_batvolt_create(struct device_node* dnode, int mincap,
 			bvp_me.is_irc_full = !!(bvp_me.irc_resistance / 1000);
 			bvp_me.irc_resistance %=  1000;
 			max_irc_mohm =
-				(MAX_IRC_VOLTAGE - bvp_me.threshold_vbat_limit[bvp_me.batvolt_pos]) * 1000 / mincap;
+				(MAX_IRC_VOLTAGE - bvp_me.threshold_vbat_limit) * 1000 / mincap;
 			pr_batvolt(UPDATE,
 				"IR Compensation is enabled: %d mohm (dt=%d, max=%d, full=%d)\n",
 				min(bvp_me.irc_resistance, max_irc_mohm), bvp_me.irc_resistance, max_irc_mohm, bvp_me.is_irc_full);
@@ -407,21 +308,12 @@ bool protection_batvolt_create(struct device_node* dnode, int mincap,
 		}
 	}
 
-	bvp_me.multi_fv_enabled = of_property_read_bool(dnode, "lge,multi-fv-enable");
+	bvp_me.multi_fv_enabled = of_property_read_bool(dnode, "lge,mulit-fv-enable");
 	ret = of_property_read_u32_array(dnode,
 		"lge,multi-fv-mvolt", bvp_me.multi_fv_mvolt, MFV_MAX);
 	if (ret < 0) {
 		bvp_me.multi_fv_mvolt[0] = 4450;
 		bvp_me.multi_fv_mvolt[1] = 4430;
-	}
-
-	if (bvp_me.multi_fv_enabled) {
-		pr_batvolt(UPDATE, "Multi-FV is enabled: CC=%d, CV=%d\n",
-				bvp_me.multi_fv_mvolt[0], bvp_me.multi_fv_mvolt[1]);
-	}
-	else {
-		pr_batvolt(UPDATE, "Multi-FV is disabled: CC=%d, CV=%d\n",
-				bvp_me.multi_fv_mvolt[0], bvp_me.multi_fv_mvolt[1]);
 	}
 
 	/* Fill callback */
@@ -453,11 +345,10 @@ bool protection_batvolt_create(struct device_node* dnode, int mincap,
 	}
 
 	pr_batvolt(UPDATE, "Complete to create, "
-		"threshold_vbat_limit(%d, %d), threshold_vbat_clear(%d, %d), "
-		"threshold_ibat_rated(%d, %d), step_ibat_ma(%d), step_poll_ms(%d)\n",
-		bvp_me.threshold_vbat_limit[0], bvp_me.threshold_vbat_limit[1],
-		bvp_me.threshold_vbat_clear[0], bvp_me.threshold_vbat_clear[1],
-		bvp_me.threshold_ibat_rated[0], bvp_me.threshold_ibat_rated[1],
+		"threshold_vbat_limit(%d), threshold_vbat_clear(%d), "
+		"threshold_ibat_rated(%d, marging=%dmA), step_ibat_ma(%d), step_poll_ms(%d)\n",
+		bvp_me.threshold_vbat_limit, bvp_me.threshold_vbat_clear,
+		bvp_me.threshold_ibat_rated, bvp_me.threshold_ibat_margin,
 		bvp_me.step_ibat_ma, bvp_me.step_poll_ms);
 
 	return true;
@@ -472,12 +363,9 @@ void protection_batvolt_destroy(void) {
 	veneer_voter_unregister(&bvp_me.bvp_voter);
 	bvp_me.bvp_get = NULL;
 
-	bvp_me.threshold_vbat_limit[0] = BVP_NOTREADY;
-	bvp_me.threshold_vbat_clear[0] = BVP_NOTREADY;
-	bvp_me.threshold_ibat_rated[0] = BVP_NOTREADY;
-	bvp_me.threshold_vbat_limit[1] = BVP_NOTREADY;
-	bvp_me.threshold_vbat_clear[1] = BVP_NOTREADY;
-	bvp_me.threshold_ibat_rated[1] = BVP_NOTREADY;
+	bvp_me.threshold_vbat_limit	= BVP_NOTREADY;
+	bvp_me.threshold_vbat_clear	= BVP_NOTREADY;
+	bvp_me.threshold_ibat_rated	= BVP_NOTREADY;
 	bvp_me.threshold_cv_ibat_rated	= BVP_NOTREADY;
 
 	bvp_me.step_ibat_ma		= BVP_NOTREADY;

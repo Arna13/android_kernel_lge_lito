@@ -40,21 +40,12 @@ static void prof_timer_handler(struct timer_list *unused)
 	schedule_work(&prof_buf.free_work);
 }
 
-#ifdef CONFIG_DEBUG_FS
+
 static ssize_t sreadahead_dbgfs_read(
 		struct file *file,
 		char __user *buff,
 		size_t buff_count,
 		loff_t *ppos)
-#else
-static ssize_t sreadahead_dbgfs_read(
-		struct file *filp,
-		struct kobject *kobj,
-		struct bin_attribute *attr,
-		char *buff,
-		loff_t off,
-		size_t count)
-#endif
 {
 	struct sreadahead_profdata data;
 
@@ -79,33 +70,18 @@ static ssize_t sreadahead_dbgfs_read(
 		data.name, data.pos[0],
 		data.len, data.procname, prof_buf.read_cnt);
 
-#ifdef CONFIG_DEBUG_FS
 	if (copy_to_user(buff, &data, sizeof(struct sreadahead_profdata)))
 		return 0;
 
 	(*ppos) = 0;
 	return 1;
-#else
-	memcpy(buff, &data, sizeof(struct sreadahead_profdata));
-	return sizeof(struct sreadahead_profdata);
-#endif
 }
 
-#ifdef CONFIG_DEBUG_FS
 static ssize_t sreadaheadflag_dbgfs_read(
 		struct file *file,
 		char __user *buff,
 		size_t buff_count,
 		loff_t *ppos)
-#else
-static ssize_t sreadaheadflag_dbgfs_read(
-		struct file *filp,
-		struct kobject *kobj,
-		struct bin_attribute *attr,
-		char *buff,
-		loff_t off,
-		size_t count)
-#endif
 {
 	int ret = 0;
 
@@ -120,7 +96,6 @@ static ssize_t sreadaheadflag_dbgfs_read(
 		schedule();
 	} while(1);
 
-#ifdef CONFIG_DEBUG_FS
 	if (copy_to_user(buff, &prof_buf.state, sizeof(int))) {
 		ret = 0;
 	} else {
@@ -128,40 +103,24 @@ static ssize_t sreadaheadflag_dbgfs_read(
 	}
 
 	(*ppos) = 0;
-#else
-	memcpy(buff, &prof_buf.state, sizeof(int));
-	ret = sizeof(int);
-#endif
+
 	__set_current_state(TASK_RUNNING);
 	remove_wait_queue(&prof_state_wait, &wait);
 
 	return ret;
 }
 
-#ifdef CONFIG_DEBUG_FS
 static ssize_t sreadaheadflag_dbgfs_write(
 		struct file *file,
 		const char __user *buff,
 		size_t count,
 		loff_t *ppos)
-#else
-static ssize_t sreadaheadflag_dbgfs_write(
-		struct file *filp,
-		struct kobject *kobj,
-		struct bin_attribute *attr,
-		char *buff,
-		loff_t off,
-		size_t count)
-#endif
 {
 	int state;
 
-#ifdef CONFIG_DEBUG_FS
 	if (copy_from_user(&state, buff, sizeof(int)))
 		return 0;
-#else
-	memcpy(&state, buff, count);
-#endif
+
 	if (state == PROF_INIT) {
 		mutex_lock(&prof_buf.ulock);
 		if (prof_buf.state != PROF_NOT) {
@@ -190,13 +149,10 @@ static ssize_t sreadaheadflag_dbgfs_write(
 		mutex_unlock(&prof_buf.ulock);
 	}
 
-#ifdef CONFIG_DEBUG_FS
 	(*ppos) = 0;
-#endif
 	return sizeof(int);
 }
 
-#ifdef CONFIG_DEBUG_FS
 static const struct file_operations sreadaheadflag_dbgfs_fops = {
 	.read = sreadaheadflag_dbgfs_read,
 	.write = sreadaheadflag_dbgfs_write,
@@ -205,33 +161,10 @@ static const struct file_operations sreadaheadflag_dbgfs_fops = {
 static const struct file_operations sreadahead_dbgfs_fops = {
 	.read = sreadahead_dbgfs_read,
 };
-#else
-static struct kobject *sreadahead_kobj;
-
-static struct bin_attribute sra_data_attr_data =
-	__BIN_ATTR(profilingdata, S_IRUSR, sreadahead_dbgfs_read, NULL, 0);
-
-static struct bin_attribute sra_flag_attr_data =
-	__BIN_ATTR(profilingflag, (S_IRUSR | S_IWUSR), sreadaheadflag_dbgfs_read, sreadaheadflag_dbgfs_write, 0);
-
-static struct bin_attribute *sra_bin_attrs[] = {
-	&sra_data_attr_data,
-	&sra_flag_attr_data,
-	NULL,
-};
-
-static struct attribute_group sreadahead_group = {
-	.bin_attrs = sra_bin_attrs,
-};
-#endif
-
 
 static int __init sreadahead_init(void)
 {
-#ifdef CONFIG_DEBUG_FS
 	struct dentry *dbgfs_dir;
-#endif
-	int ret = 0;
 
 	/* state init */
 	prof_buf.state = PROF_NOT;
@@ -245,7 +178,6 @@ static int __init sreadahead_init(void)
 	/* work struct init */
 	INIT_WORK(&prof_buf.free_work, prof_buf_free_work);
 
-#ifdef CONFIG_DEBUG_FS
 	/* debugfs init for sreadahead */
 	dbgfs_dir = debugfs_create_dir("sreadahead", NULL);
 	if (!dbgfs_dir)
@@ -256,19 +188,7 @@ static int __init sreadahead_init(void)
 	debugfs_create_file("profilingflag",
 			0644, dbgfs_dir, NULL,
 			&sreadaheadflag_dbgfs_fops);
-#else
-	sreadahead_kobj = kobject_create_and_add("sreadahead", NULL);
-
-	if(!sreadahead_kobj) {
-		pr_err("%s: kobject_create_and_add() failed\n", __func__);
-		return -1;
-	}
-
-	ret = sysfs_create_group(sreadahead_kobj, &sreadahead_group);
-	if (ret)
-		pr_err("%s: sysfs_create_group() failed. ret=%d\n", __func__, ret);
-#endif
-	return ret;
+	return 0;
 }
 
 device_initcall(sreadahead_init);

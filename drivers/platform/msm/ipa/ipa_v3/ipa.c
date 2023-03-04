@@ -58,11 +58,6 @@
 
 #define IPA_SUSPEND_BUSY_TIMEOUT (msecs_to_jiffies(10))
 
-#define DEFAULT_MPM_RING_SIZE_UL 64
-#define DEFAULT_MPM_RING_SIZE_DL 64
-#define DEFAULT_MPM_TETH_AGGR_SIZE 24
-#define DEFAULT_MPM_UC_THRESH_SIZE 4
-
 /*
  * The following for adding code (ie. for EMULATION) not found on x86.
  */
@@ -128,10 +123,6 @@ static DECLARE_WORK(ipa3_fw_loading_work, ipa3_load_ipa_fw);
 static void ipa_dec_clients_disable_clks_on_wq(struct work_struct *work);
 static DECLARE_DELAYED_WORK(ipa_dec_clients_disable_clks_on_wq_work,
 	ipa_dec_clients_disable_clks_on_wq);
-
-static void ipa_inc_clients_enable_clks_on_wq(struct work_struct *work);
-static DECLARE_WORK(ipa_inc_clients_enable_clks_on_wq_work,
-	ipa_inc_clients_enable_clks_on_wq);
 
 static int ipa3_ioctl_add_rt_rule_v2(unsigned long arg);
 static int ipa3_ioctl_add_rt_rule_ext_v2(unsigned long arg);
@@ -5040,12 +5031,6 @@ void ipa3_inc_client_enable_clks(struct ipa_active_client_logging_info *id)
 	mutex_unlock(&ipa3_ctx->ipa3_active_clients.mutex);
 }
 
-void ipa3_handle_gsi_differ_irq(void)
-{
-	queue_work(ipa3_ctx->power_mgmt_wq,
-		&ipa_inc_clients_enable_clks_on_wq_work);
-}
-
 /**
  * ipa3_active_clks_status() - update the current msm bus clock vote
  * status
@@ -5162,13 +5147,6 @@ static void ipa_dec_clients_disable_clks_on_wq(struct work_struct *work)
 	__ipa3_dec_client_disable_clks();
 }
 
-static void ipa_inc_clients_enable_clks_on_wq(struct work_struct *work)
-{
-	ipa3_enable_clks();
-	IPAERR("unexpected clk access, clock on IPA to save reg");
-	ipa_assert();
-}
-
 /**
  * ipa3_dec_client_disable_clks_no_block() - Decrease active clients counter
  * if possible without blocking. If this is the last client then the desrease
@@ -5209,7 +5187,7 @@ void ipa3_inc_acquire_wakelock(void)
 	spin_lock_irqsave(&ipa3_ctx->wakelock_ref_cnt.spinlock, flags);
 	ipa3_ctx->wakelock_ref_cnt.cnt++;
 	if (ipa3_ctx->wakelock_ref_cnt.cnt == 1)
-		__pm_stay_awake(ipa3_ctx->w_lock);
+		__pm_stay_awake(&ipa3_ctx->w_lock);
 	IPADBG_LOW("active wakelock ref cnt = %d\n",
 		ipa3_ctx->wakelock_ref_cnt.cnt);
 	spin_unlock_irqrestore(&ipa3_ctx->wakelock_ref_cnt.spinlock, flags);
@@ -5232,7 +5210,7 @@ void ipa3_dec_release_wakelock(void)
 	IPADBG_LOW("active wakelock ref cnt = %d\n",
 		ipa3_ctx->wakelock_ref_cnt.cnt);
 	if (ipa3_ctx->wakelock_ref_cnt.cnt == 0)
-		__pm_relax(ipa3_ctx->w_lock);
+		__pm_relax(&ipa3_ctx->w_lock);
 	spin_unlock_irqrestore(&ipa3_ctx->wakelock_ref_cnt.spinlock, flags);
 }
 
@@ -5964,7 +5942,6 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 	gsi_props.req_clk_cb = NULL;
 	gsi_props.rel_clk_cb = NULL;
 	gsi_props.clk_status_cb = ipa3_active_clks_status;
-	gsi_props.enable_clk_bug_on = ipa3_handle_gsi_differ_irq;
 
 	if (ipa3_ctx->ipa_config_is_mhi) {
 		gsi_props.mhi_er_id_limits_valid = true;
@@ -6577,22 +6554,11 @@ static int ipa3_pre_init(const struct ipa3_plat_drv_res *resource_p,
 	ipa3_ctx->do_ram_collection_on_crash =
 		resource_p->do_ram_collection_on_crash;
 	ipa3_ctx->lan_rx_napi_enable = resource_p->lan_rx_napi_enable;
-	ipa3_ctx->mpm_ring_size_ul_cache = DEFAULT_MPM_RING_SIZE_UL;
-	ipa3_ctx->mpm_ring_size_ul = DEFAULT_MPM_RING_SIZE_UL;
-	ipa3_ctx->mpm_ring_size_dl_cache = DEFAULT_MPM_RING_SIZE_DL;
-	ipa3_ctx->mpm_ring_size_dl = DEFAULT_MPM_RING_SIZE_DL;
-	ipa3_ctx->mpm_teth_aggr_size = DEFAULT_MPM_TETH_AGGR_SIZE;
-	ipa3_ctx->mpm_uc_thresh = DEFAULT_MPM_UC_THRESH_SIZE;
 
 	if (resource_p->gsi_fw_file_name) {
 		ipa3_ctx->gsi_fw_file_name =
 			kzalloc(((strlen(resource_p->gsi_fw_file_name)+1) *
 				sizeof(const char)), GFP_KERNEL);
-		if (ipa3_ctx->gsi_fw_file_name == NULL) {
-			IPAERR_RL("Failed to alloc GSI FW file name\n");
-			result = -ENOMEM;
-			goto fail_gsi_file_alloc;
-		}
 		memcpy(ipa3_ctx->gsi_fw_file_name,
 				(void const *)resource_p->gsi_fw_file_name,
 				strlen(resource_p->gsi_fw_file_name));
@@ -6602,11 +6568,6 @@ static int ipa3_pre_init(const struct ipa3_plat_drv_res *resource_p,
 		ipa3_ctx->uc_fw_file_name =
 			kzalloc(((strlen(resource_p->uc_fw_file_name)+1) *
 				sizeof(const char)), GFP_KERNEL);
-		if (ipa3_ctx->uc_fw_file_name == NULL) {
-			IPAERR_RL("Failed to alloc uC FW file name\n");
-			result = -ENOMEM;
-			goto fail_uc_file_alloc;
-		}
 		memcpy(ipa3_ctx->uc_fw_file_name,
 			(void const *)resource_p->uc_fw_file_name,
 			strlen(resource_p->uc_fw_file_name));
@@ -6943,14 +6904,8 @@ static int ipa3_pre_init(const struct ipa3_plat_drv_res *resource_p,
 		goto fail_device_create;
 	}
 
-	/* Register a wakeup source. */
-	ipa3_ctx->w_lock =
-		wakeup_source_register(&ipa_pdev->dev, "IPA_WS");
-	if (!ipa3_ctx->w_lock) {
-		IPAERR("IPA wakeup source register failed\n");
-		result = -ENOMEM;
-		goto fail_w_source_register;
-	}
+	/* Create a wakeup source. */
+	wakeup_source_init(&ipa3_ctx->w_lock, "IPA_WS");
 	spin_lock_init(&ipa3_ctx->wakelock_ref_cnt.spinlock);
 
 	/* Initialize Power Management framework */
@@ -7043,9 +6998,6 @@ fail_gsi_pre_fw_load_init:
 fail_ipa_dma_setup:
 	ipa_pm_destroy();
 fail_ipa_pm_init:
-	wakeup_source_unregister(ipa3_ctx->w_lock);
-	ipa3_ctx->w_lock = NULL;
-fail_w_source_register:
 	device_destroy(ipa3_ctx->cdev.class, ipa3_ctx->cdev.dev_num);
 fail_device_create:
 	unregister_chrdev_region(ipa3_ctx->cdev.dev_num, 1);
@@ -7105,9 +7057,6 @@ fail_mem_ctrl:
 fail_tz_unlock_reg:
 	if (ipa3_ctx->logbuf)
 		ipc_log_context_destroy(ipa3_ctx->logbuf);
-fail_uc_file_alloc:
-	kfree(ipa3_ctx->gsi_fw_file_name);
-fail_gsi_file_alloc:
 	kfree(ipa3_ctx);
 	ipa3_ctx = NULL;
 fail_mem_ctx:
@@ -7396,15 +7345,15 @@ static int get_ipa_dts_configuration(struct platform_device *pdev,
 	result = of_property_read_string(pdev->dev.of_node,
 			"qcom,use-gsi-ipa-fw", &ipa_drv_res->gsi_fw_file_name);
 	if (!result)
-		IPADBG("GSI IPA FW name %s\n", ipa_drv_res->gsi_fw_file_name);
+		IPADBG("GSI IPA FW using %s\n", ipa_drv_res->gsi_fw_file_name);
 	else
-		IPADBG("GSI IPA FW file not defined. Using default one\n");
+		IPADBG("GSI IPA FW file not defined using default one\n");
 	result = of_property_read_string(pdev->dev.of_node,
 			"qcom,use-uc-ipa-fw", &ipa_drv_res->uc_fw_file_name);
 	if (!result)
-		IPADBG("uC IPA FW name = %s\n", ipa_drv_res->uc_fw_file_name);
+		IPADBG("uC IPA FW using = %s\n", ipa_drv_res->uc_fw_file_name);
 	else
-		IPADBG("uC IPA FW file not defined. Using default one\n");
+		IPADBG("uC IPA FW file not defined using default one\n");
 	/* Get IPA wrapper address */
 	resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 			"ipa-base");
@@ -8569,7 +8518,6 @@ void ipa_pc_qmp_enable(void)
  *            PCIe Version
  *************************************************************/
 
-#ifdef CONFIG_PCI
 int ipa3_pci_drv_probe(
 	struct pci_dev            *pci_dev,
 	struct ipa_api_controller *api_ctrl,
@@ -8729,7 +8677,6 @@ int ipa3_pci_drv_probe(
 
 	return result;
 }
-#endif
 
 /*
  * The following returns transport register memory location and

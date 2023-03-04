@@ -450,10 +450,6 @@
 	};
 };
 
-&sde_dsi1 {
-	status = "disabled";
-};
-
 &mdss_dsi1 {
 	status = "disabled";
 };

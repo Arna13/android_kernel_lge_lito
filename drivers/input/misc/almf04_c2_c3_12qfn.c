@@ -186,16 +186,6 @@ static int Backup_CalData(struct i2c_client *client)
 {
 	int loop, dloop;
 	int ret;
-	//============================================================//
-	//[200512] ADS Change
-	//[START]=====================================================//
-	////============================================================//
-	////[200506] ADS ADD
-	////[START]=====================================================//
-	//int chk_val;
-	////[END]=======================================================//
-	short chk_val;
-	//[END]=======================================================//
 
 	for(loop = 0 ; loop < CNT_MAX_CH ; loop++)
 	{
@@ -235,35 +225,11 @@ static int Backup_CalData(struct i2c_client *client)
 			CalData[CNT_MAX_CH+loop][dloop] = i2c_smbus_read_byte_data(client,I2C_ADDR_REQ_DATA + dloop);
 	}
 
-	//============================================================//
-	//[200506] ADS Change
-	//[START]=====================================================//
-	/* if(CalData[0][0] == 0xFF || (CalData[0][0] == 0x00 && CalData[0][1] == 0x00))
+	if(CalData[0][0] == 0xFF || (CalData[0][0] == 0x00 && CalData[0][1] == 0x00))
 	{
 		PINFO("almf04: Invalid cal data, Not back up this value.");
 		return -1;
-	}*/
-	//valid Data Check
-	for(loop = 0 ; loop < CNT_MAX_CH ; loop++) 	{
-		for(dloop = 0; dloop < SZ_CALDATA_UNIT ; dloop+=2) {
-			chk_val = MK_INT(CalData[loop][dloop], CalData[loop][dloop + 1]);
-			if(chk_val <= 0) {
-				PINFO("almf04: Invalid cal data, Not back up this value.([D:%d,%d]%d)", loop, dloop, chk_val);
-				return -1;
-			}
-		}
 	}
-
-	for(loop = 0 ; loop < CNT_MAX_CH ; loop++) {
-		for(dloop = 0; dloop < SZ_CALDATA_UNIT ; dloop+=2) {
-			chk_val = MK_INT(CalData[CNT_MAX_CH + loop][dloop], CalData[CNT_MAX_CH + loop][dloop + 1]);
-			if((chk_val <= 8000) || (chk_val >= 12000)) {
-				PINFO("almf04: Invalid cal data, Not back up this value.([R:%d,%d]%d)", loop, dloop, chk_val);
-				return -1;
-			}
-		}
-	}
-	//[END]=======================================================//
 
 	for(loop =0;loop<(CNT_MAX_CH*2);loop++)
 	{
@@ -594,163 +560,6 @@ static void onoff_sensor(struct almf04_data *data, int onoff_mode)
 	}
 }
 
-//=========================================================================================================================================//
-//[200506] ADS Change
-//[START]==================================================================================================================================//
-//static unsigned char load_firmware(struct almf04_data *data, struct i2c_client *client, const char *name)
-//{
-//	const struct firmware *fw = NULL;
-//	unsigned char rtn;
-//	int ret, i, count = 0;
-//	int max_page;
-//	unsigned short main_version, sub_version;
-//	unsigned char page_addr[2];
-//	unsigned char page_num;
-//	unsigned char fw_version, ic_fw_version;
-//	int version_addr;
-//	int chip_id = -1;
-//	int restore = 0;
-//	unsigned char sys_status = 1;
-//
-//	PINFO("ALMF04 Load Firmware Entered");
-//
-//	gpio_set_value(data->platform_data->chip_enable, 1);
-//	mdelay(50);
-//	gpio_set_value(data->platform_data->chip_enable, 0);
-//
-//	ret = request_firmware(&fw, name, &data->client->dev);
-//	if (ret)
-//	{
-//		PINFO("ALMF04 Unable to open bin [%s]  ret %d", name, ret);
-//		if (fw) release_firmware(fw);
-//		return 1;
-//	}
-//	else
-//		PINFO("ALMF04 Open bin [%s] ret : %d ", name, ret);
-//
-//
-//	max_page = (fw->size)/SZ_PAGE_DATA;
-//	version_addr = (fw->size)-SZ_PAGE_DATA;
-//	fw_version = MK_INT(fw->data[version_addr], fw->data[version_addr+1]);
-//	page_num = fw->data[version_addr+3];
-//	PINFO("###########fw version : %d.%d, fw_version : %d, page_num : %d###########", fw->data[version_addr], fw->data[version_addr+1], fw_version, page_num);
-//
-//	mdelay(50);
-//
-//	chip_id= i2c_smbus_read_byte_data(client, 0x00);
-//	PINFO("ALMF04 SAR controller ALMF04 chip_id = 0x%x\n", chip_id);
-//
-//	main_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_MAIN);
-//	sub_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_SUB);
-//	ic_fw_version = MK_INT(main_version, sub_version);
-//	PINFO("###########ic version : %d.%d, ic_fw_version : %d###########", main_version, sub_version, ic_fw_version);
-//
-//	if( (fw->data[version_addr] != main_version) || (fw->data[version_addr+1] != sub_version))
-//	{
-//		PINFO("ALMF04 update firmware");
-//
-//		mdelay(500);
-//		check_firmware_ready(client);
-//		sys_status = i2c_smbus_read_byte_data(client, I2C_ADDR_SYS_STAT);
-//
-//		if (sub_version == 0) {
-//			restore = 0;
-//			PINFO("skip cal backup");
-//		} else {
-//			if (Backup_CalData(client) < 0) restore = 0;
-//			else							restore = 1;
-//		}
-//
-//		/* IC Download Mode Change */
-//		chg_mode(ON, client);
-//
-//		/* firmware write process */
-//		rtn = erase_eflash(client);
-//		if(rtn != RTN_SUCC) {
-//			PINFO("earse fail\n");
-//			if (fw) release_firmware(fw);
-//			return rtn;		//earse fail
-//		}
-//
-//		//============================================================//
-//		//[191014] ADS Change
-//		//[START]=====================================================//
-//		/*
-//		   while(count < page_num) {
-//		   page_addr[1] = (unsigned char)((count & 0xFF00) >> 8);
-//		   page_addr[0] = (unsigned char)(count & 0x00FF);
-//		   rtn = write_eflash_page(FLAG_FW, page_addr, fw->data + (count * SZ_PAGE_DATA), client);
-//		   if(rtn == RTN_TIMEOUT) {
-//		   if (fw) release_firmware(fw);
-//		   return RTN_TIMEOUT;
-//		   }
-//		   count++;
-//		   }
-//		 */
-//		while(count < page_num)
-//		{
-//			for(i=0; i < SZ_PAGE_DATA; i++) i2c_smbus_write_byte_data(client, i, fw->data[i + (count*SZ_PAGE_DATA)]);
-//
-//			page_addr[1] = (unsigned char)((count & 0xFF00) >> 8);
-//			page_addr[0] = (unsigned char)(count & 0x00FF);
-//
-//			i2c_smbus_write_byte_data(client, ADDR_EFLA_PAGE_L, page_addr[0]);
-//			i2c_smbus_write_byte_data(client, ADDR_EFLA_PAGE_H, (page_addr[1] | EMD_PG_WRITE));
-//			i2c_smbus_write_byte_data(client, ADDR_EFLA_CTRL, CMD_EEP_START);
-//
-//			if(chk_done(FL_EFLA_TIMEOUT_CNT, client) == RTN_TIMEOUT)
-//			{
-//				if (fw) release_firmware(fw);
-//				return RTN_TIMEOUT;
-//			}
-//			count++;
-//		}
-//		//[END]=====================================================//
-//
-//		chg_mode(OFF, client);
-//
-//		gpio_set_value(data->platform_data->chip_enable, 1);
-//		mdelay(50);
-//		gpio_set_value(data->platform_data->chip_enable, 0);
-//		mdelay(50);
-//
-//		main_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_MAIN);
-//		sub_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_SUB);
-//		ic_fw_version = MK_INT(main_version, sub_version);
-//		PINFO("###########ic version : %d.%d, ic_fw_version : %d###########", main_version, sub_version, ic_fw_version);
-//
-//		if( (fw->data[version_addr] != main_version) || (fw->data[version_addr+1] != sub_version))
-//		{
-//			PINFO("ATMF04 Firmware update failed.(ic version : %d.%d)", main_version, sub_version);
-//			if (fw) release_firmware(fw);
-//			return 3;
-//		}
-//		else
-//			PINFO("ATMF04 Firmware update is done");
-//	}
-//	else {
-//		PINFO("Not update firmware. Firmware version is lower than ic.(Or same version)");
-//	}
-//
-//#if defined(CONFIG_LGE_CAP_SENSOR_UPDATE_SENSITIVITY)
-//	Update_Sensitivity(data, client);
-//#endif
-//
-//	gpio_set_value(data->platform_data->chip_enable, 1);
-//	mdelay(50);
-//
-//	if(restore)
-//	{
-//		ret = RestoreProc_CalData(data, client);
-//		if(ret) PINFO("restore fail ret: %d",ret);
-//	}
-//
-//	PINFO("disable ok");
-//	release_firmware(fw);
-//
-//	return 0;
-//}
-
 static unsigned char load_firmware(struct almf04_data *data, struct i2c_client *client, const char *name)
 {
 	const struct firmware *fw = NULL;
@@ -760,11 +569,11 @@ static unsigned char load_firmware(struct almf04_data *data, struct i2c_client *
 	unsigned short main_version, sub_version;
 	unsigned char page_addr[2];
 	unsigned char page_num;
+	unsigned char fw_version, ic_fw_version;
 	int version_addr;
+	int chip_id = -1;
 	int restore = 0;
 	unsigned char sys_status = 1;
-	unsigned char rdata, vfy_fail;
-	int retry_cnt = 0;
 
 	PINFO("ALMF04 Load Firmware Entered");
 
@@ -782,33 +591,24 @@ static unsigned char load_firmware(struct almf04_data *data, struct i2c_client *
 	else
 		PINFO("ALMF04 Open bin [%s] ret : %d ", name, ret);
 
+
 	max_page = (fw->size)/SZ_PAGE_DATA;
 	version_addr = (fw->size)-SZ_PAGE_DATA;
+	fw_version = MK_INT(fw->data[version_addr], fw->data[version_addr+1]);
 	page_num = fw->data[version_addr+3];
-	PINFO("###########fw version : %d.%d, page_num : %d###########", fw->data[version_addr], fw->data[version_addr+1], page_num);
+	PINFO("###########fw version : %d.%d, fw_version : %d, page_num : %d###########", fw->data[version_addr], fw->data[version_addr+1], fw_version, page_num);
 
 	mdelay(50);
 
+	chip_id= i2c_smbus_read_byte_data(client, 0x00);
+	PINFO("ALMF04 SAR controller ALMF04 chip_id = 0x%x\n", chip_id);
+
 	main_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_MAIN);
 	sub_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_SUB);
+	ic_fw_version = MK_INT(main_version, sub_version);
+	PINFO("###########ic version : %d.%d, ic_fw_version : %d###########", main_version, sub_version, ic_fw_version);
 
-	//============================================================//
-	//[200526] ADS Add
-	//[START]=====================================================//
-	if((sub_version == 0x00) || (sub_version == 0xB4))
-	{
-		for(retry_cnt = 0 ; retry_cnt < 5 ; retry_cnt++)
-		{
-			main_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_MAIN);
-			sub_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_SUB);
-
-			if((sub_version != 0x00) && (sub_version != 0xB4)) break;
-		}
-	}
-	//[END]=====================================================//
-	PINFO("###########ic version : %d.%d, ###########", main_version, sub_version);
-
-	if( (fw->data[version_addr] != main_version) || (fw->data[version_addr+1] != sub_version))
+	if( (fw->data[version_addr] != main_version) || (fw->data[version_addr+1] != sub_version)) 
 	{
 		PINFO("ALMF04 update firmware");
 
@@ -816,8 +616,7 @@ static unsigned char load_firmware(struct almf04_data *data, struct i2c_client *
 		check_firmware_ready(client);
 		sys_status = i2c_smbus_read_byte_data(client, I2C_ADDR_SYS_STAT);
 
-		//if ((sub_version == 0) || (get_bit(sys_status, 3) == 1) || ((sys_status & 0x06) == 0x06) || ((sys_status & 0x06) == 0x00) ) {
-		if ((sub_version == 0) || (sub_version == 0xB4) || (get_bit(sys_status, 3) == 1) || ((sys_status & 0x06) == 0x06) || ((sys_status & 0x06) == 0x00) ) {
+		if (sub_version == 0) {
 			restore = 0;
 			PINFO("skip cal backup");
 		} else {
@@ -828,72 +627,48 @@ static unsigned char load_firmware(struct almf04_data *data, struct i2c_client *
 		/* IC Download Mode Change */
 		chg_mode(ON, client);
 
-		//FW Download & Verify
-		for(retry_cnt = 0 ; retry_cnt < 3 ; retry_cnt++)
-		{
-			//rom erase
-			rtn = erase_eflash(client);
-			if(rtn != RTN_SUCC) {
-				PINFO("earse fail\n");
-				if (fw) release_firmware(fw);
-				return rtn;		//earse fail
-			}
-
-			//fw download
-			while(count < page_num) {
-				for(i=0; i < SZ_PAGE_DATA; i++) {
-					i2c_smbus_write_byte_data(client, i, fw->data[i + (count*SZ_PAGE_DATA)]);
-				}
-
-				page_addr[1] = (unsigned char)((count & 0xFF00) >> 8);
-				page_addr[0] = (unsigned char)(count & 0x00FF);
-
-				i2c_smbus_write_byte_data(client, ADDR_EFLA_PAGE_L, page_addr[0]);
-				i2c_smbus_write_byte_data(client, ADDR_EFLA_PAGE_H, (page_addr[1] | EMD_PG_WRITE));
-				i2c_smbus_write_byte_data(client, ADDR_EFLA_CTRL, CMD_EEP_START);
-
-				if(chk_done(FL_EFLA_TIMEOUT_CNT, client) == RTN_TIMEOUT) {
-					if (fw) release_firmware(fw);
-					return RTN_TIMEOUT;
-				}
-				count++;
-			}
-
-			//fw verify
-			count = 0;
-			vfy_fail = 0;
-			while(count < page_num) {
-				page_addr[1] = (unsigned char)((count & 0xFF00) >> 8);
-				page_addr[0] = (unsigned char)(count & 0x00FF);
-
-				i2c_smbus_write_byte_data(client, ADDR_EFLA_PAGE_L, page_addr[0]);
-				i2c_smbus_write_byte_data(client, ADDR_EFLA_PAGE_H, (page_addr[1] | EMD_PG_READ));
-				i2c_smbus_write_byte_data(client, ADDR_EFLA_CTRL, CMD_EEP_START);
-
-				if(chk_done(FL_EFLA_TIMEOUT_CNT, client) == RTN_TIMEOUT) {
-					if (fw) release_firmware(fw);
-					return RTN_TIMEOUT;
-				}
-
-				for(i = 0; i < SZ_PAGE_DATA; i++) {
-					rdata = i2c_smbus_read_byte_data(client, i);
-					//Verify fail
-					if(rdata != fw->data[i + (count*SZ_PAGE_DATA)]) {
-						PINFO("verify failed!! [retry:%d][%d:(%d,%d)]......", retry_cnt, i + (count*SZ_PAGE_DATA), rdata, fw->data[i + (count*SZ_PAGE_DATA)]);
-						vfy_fail = 1;
-					}
-				}
-
-				if(vfy_fail == 1) break;
-				count++;
-			}
-
-			//verify success
-			if(vfy_fail == 0) {
-				PINFO("verify success [retry:%d]", retry_cnt);
-				break;
-			}
+		/* firmware write process */
+		rtn = erase_eflash(client);
+		if(rtn != RTN_SUCC) {
+			PINFO("earse fail\n");
+			if (fw) release_firmware(fw);
+			return rtn;		//earse fail
 		}
+
+		//============================================================//
+		//[191014] ADS Change
+		//[START]=====================================================//
+		/*
+		   while(count < page_num) {
+		   page_addr[1] = (unsigned char)((count & 0xFF00) >> 8);
+		   page_addr[0] = (unsigned char)(count & 0x00FF);
+		   rtn = write_eflash_page(FLAG_FW, page_addr, fw->data + (count * SZ_PAGE_DATA), client);
+		   if(rtn == RTN_TIMEOUT) {
+		   if (fw) release_firmware(fw);
+		   return RTN_TIMEOUT;
+		   }
+		   count++;
+		   }
+		 */
+		while(count < page_num)
+		{
+			for(i=0; i < SZ_PAGE_DATA; i++) i2c_smbus_write_byte_data(client, i, fw->data[i + (count*SZ_PAGE_DATA)]);
+
+			page_addr[1] = (unsigned char)((count & 0xFF00) >> 8);
+			page_addr[0] = (unsigned char)(count & 0x00FF);
+
+			i2c_smbus_write_byte_data(client, ADDR_EFLA_PAGE_L, page_addr[0]);
+			i2c_smbus_write_byte_data(client, ADDR_EFLA_PAGE_H, (page_addr[1] | EMD_PG_WRITE));
+			i2c_smbus_write_byte_data(client, ADDR_EFLA_CTRL, CMD_EEP_START);
+
+			if(chk_done(FL_EFLA_TIMEOUT_CNT, client) == RTN_TIMEOUT)
+			{
+				if (fw) release_firmware(fw);
+				return RTN_TIMEOUT;
+			}
+			count++;
+		}
+		//[END]=====================================================//
 
 		chg_mode(OFF, client);
 
@@ -904,8 +679,11 @@ static unsigned char load_firmware(struct almf04_data *data, struct i2c_client *
 
 		main_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_MAIN);
 		sub_version = i2c_smbus_read_byte_data(client, I2C_ADDR_PGM_VER_SUB);
+		ic_fw_version = MK_INT(main_version, sub_version);
+		PINFO("###########ic version : %d.%d, ic_fw_version : %d###########", main_version, sub_version, ic_fw_version);
 
-		if( (fw->data[version_addr] != main_version) || (fw->data[version_addr+1] != sub_version)) {
+		if( (fw->data[version_addr] != main_version) || (fw->data[version_addr+1] != sub_version)) 
+		{
 			PINFO("ATMF04 Firmware update failed.(ic version : %d.%d)", main_version, sub_version);
 			if (fw) release_firmware(fw);
 			return 3;
@@ -914,7 +692,7 @@ static unsigned char load_firmware(struct almf04_data *data, struct i2c_client *
 			PINFO("ATMF04 Firmware update is done");
 	}
 	else {
-		PINFO("Not update firmware. Firmware version is the same as IC.");
+		PINFO("Not update firmware. Firmware version is lower than ic.(Or same version)");
 	}
 
 #if defined(CONFIG_LGE_CAP_SENSOR_UPDATE_SENSITIVITY)
@@ -935,7 +713,6 @@ static unsigned char load_firmware(struct almf04_data *data, struct i2c_client *
 
 	return 0;
 }
-//[END]====================================================================================================================================//
 
 static int write_initcode(struct i2c_client *client)
 {
@@ -1418,8 +1195,6 @@ static ssize_t almf04_show_regproxdata(struct device *dev,
 	client = data->client;
 	memset(buf_line, 0, sizeof(buf_line));
 	memset(buf_regproxdata, 0, sizeof(buf_regproxdata));
-
-	check_firmware_ready(client); //workaound code for calibration fail
 
 	init_touch_md = i2c_smbus_read_byte_data(client, I2C_ADDR_SYS_STAT);
 
@@ -2204,20 +1979,17 @@ static int almf04_probe(struct i2c_client *client,
 		err = sensor_parse_dt(&client->dev, platform_data);
 		if (err)
 			return err;
-
+#if defined(CONFIG_MACH_LITO_CAYMANLM)
 		/* Check for Normal booting mode or not */
 		if (lge_get_boot_mode() == LGE_BOOT_MODE_NORMAL) {
 		    /* Check for support by carrier */
-		    if (lge_get_capsensor() == 0) {
-			PINFO("ALMF04 get_capsensor is 0");
+		    if (lge_get_capsensor() == 0)
 			return -ENODEV;
-		    }
 		} else {
 		    PINFO("ALMF04 NOT NORMAL BOOT");
 		}
-
-// Change InitCodeVal for CAYMANLM GLOBAL SKU only
-#if defined(CONFIG_MACH_LITO_CAYMANLM) && defined(InitCodeVal_BY_SKU)
+		
+#ifdef InitCodeVal_BY_SKU // Change InitCodeVal for GLOBAL SKU only
 		switch( lge_get_sku_carrier() )
 		{
 			case HW_SKU_GLOBAL :
@@ -2232,6 +2004,8 @@ static int almf04_probe(struct i2c_client *client,
 				PINFO("almf04 operate initcode as DEFAULT, lge_get_sku_carrier() = %d", lge_get_sku_carrier());
 				break;
 		}
+#endif		
+		
 #endif
 #if defined(CONFIG_MACH_SDM845_JUDYPN)
 		if(strcmp(lge_get_board_subrevision(),"subrev_0"))

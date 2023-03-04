@@ -1,6 +1,6 @@
 /**
    @copyright
-   Copyright (c) 2013 - 2020, Rambus Inc. All rights reserved.
+   Copyright (c) 2013 - 2018, INSIDE Secure Oy. All rights reserved.
 */
 
 #include "implementation_defs.h"
@@ -84,8 +84,6 @@ ip_selector_match_validate_selector_group(
         const struct IPSelectorGroup *selector_group,
         unsigned bytecount)
 {
-    unsigned selector_count;
-
     if (bytecount < sizeof *selector_group)
     {
         DEBUG_FAIL(
@@ -107,19 +105,6 @@ ip_selector_match_validate_selector_group(
         return -1;
     }
 
-    selector_count = selector_group->selector_count;
-
-    if (bytecount / sizeof(struct IPSelector) < selector_count)
-    {
-        DEBUG_FAIL(
-                "IP Selector Group selector count %u too big "
-                "for given size %d.",
-                selector_count,
-                (int) bytecount);
-
-        return -1;
-    }
-
     {
         int i;
         char *start = (void *) selector_group;
@@ -127,7 +112,7 @@ ip_selector_match_validate_selector_group(
         int status = 0;
 
 
-        for (i = 0; i < selector_count; i++)
+        for (i = 0; i < selector_group->selector_count; i++)
         {
             status =
                 ip_selector_match_validate_selector(

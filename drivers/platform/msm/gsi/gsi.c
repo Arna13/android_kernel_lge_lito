@@ -20,7 +20,6 @@
 #define GSI_CMD_POLL_CNT 5
 #define GSI_STOP_CMD_TIMEOUT_MS 200
 #define GSI_MAX_CH_LOW_WEIGHT 15
-#define GSI_IRQ_STORM_THR 5
 
 #define GSI_STOP_CMD_POLL_CNT 4
 #define GSI_STOP_IN_PROC_CMD_POLL_CNT 2
@@ -113,39 +112,6 @@ static void __gsi_config_gen_irq(int ee, uint32_t mask, uint32_t val)
 			GSI_EE_n_CNTXT_GSI_IRQ_EN_OFFS(ee));
 }
 
-static void gsi_get_rp_wp(unsigned long chan_hdl,
-	uint32_t *rp, uint32_t *wp)
-{
-	struct gsi_chan_ctx *ctx;
-	int ee;
-
-	if (!gsi_ctx) {
-		pr_err("%s:%d gsi context not allocated\n", __func__, __LINE__);
-		return;
-	}
-
-	if (chan_hdl >= gsi_ctx->max_ch) {
-		GSIERR("bad params, can't read rp and wp");
-		return;
-	}
-
-	ctx = &gsi_ctx->chan[chan_hdl];
-	ee = gsi_ctx->per.ee;
-	if (ctx->props.prot == GSI_CHAN_PROT_WDI3) {
-		*rp = gsi_readl(gsi_ctx->base +
-			GSI_EE_n_GSI_CH_k_RE_FETCH_READ_PTR_OFFS(chan_hdl,
-				gsi_ctx->per.ee));
-		*wp = gsi_readl(gsi_ctx->base +
-			GSI_EE_n_GSI_CH_k_RE_FETCH_WRITE_PTR_OFFS(chan_hdl,
-				gsi_ctx->per.ee));
-	} else {
-		*rp = gsi_readl(gsi_ctx->base +
-			GSI_EE_n_GSI_CH_k_CNTXT_4_OFFS(ctx->props.ch_id, ee));
-		*wp = gsi_readl(gsi_ctx->base +
-			GSI_EE_n_GSI_CH_k_CNTXT_6_OFFS(ctx->props.ch_id, ee));
-	}
-}
-
 static void gsi_channel_state_change_wait(unsigned long chan_hdl,
 	struct gsi_chan_ctx *ctx,
 	uint32_t tm, enum gsi_ch_cmd_opcode op)
@@ -159,7 +125,6 @@ static void gsi_channel_state_change_wait(unsigned long chan_hdl,
 	enum gsi_chan_state curr_state = GSI_CHAN_STATE_NOT_ALLOCATED;
 	int stop_in_proc_retry = 0;
 	int stop_retry = 0;
-	uint32_t rp, wp;
 
 	/*
 	 * Start polling the GSI channel for
@@ -241,24 +206,15 @@ static void gsi_channel_state_change_wait(unsigned long chan_hdl,
 			return;
 		}
 
-		gsi_get_rp_wp(chan_hdl, &rp, &wp);
 		GSIDBG("GSI wait on chan_hld=%lu irqtyp=%u state=%u intr=%u\n",
 			chan_hdl,
 			type,
 			ctx->state,
 			gsi_pending_intr);
-		GSIDBG("rp=%u wp=%u\n", rp, wp);
 	}
 
-	val = gsi_readl(gsi_ctx->base +
-			GSI_EE_n_GSI_CH_k_CNTXT_0_OFFS(chan_hdl,
-				gsi_ctx->per.ee));
-	ctx->state = (val &
-		GSI_EE_n_GSI_CH_k_CNTXT_0_CHSTATE_BMSK) >>
-		GSI_EE_n_GSI_CH_k_CNTXT_0_CHSTATE_SHFT;
-	GSIDBG("Channel state change timeout, curr ch_state=%d\n",
-		ctx->state);
-	GSI_ASSERT();
+	GSIDBG("invalidating the channel state when timeout happens\n");
+	ctx->state = curr_state;
 }
 
 static void gsi_handle_ch_ctrl(int ee)
@@ -577,14 +533,9 @@ static void gsi_process_chan(struct gsi_xfer_compl_evt *evt,
 			ch_ctx->ring.rp_local = rp;
 		}
 
-		/*
-		 * Increment RP local only in polling context to avoid
-		 * sys len mismatch.
-		 */
-		if (!(callback && ch_ctx->props.dir ==
-					GSI_CHAN_DIR_FROM_GSI))
-			/* the element at RP is also processed */
-			gsi_incr_ring_rp(&ch_ctx->ring);
+
+		/* the element at RP is also processed */
+		gsi_incr_ring_rp(&ch_ctx->ring);
 
 		ch_ctx->ring.rp = ch_ctx->ring.rp_local;
 		rp_idx = gsi_find_idx_from_addr(&ch_ctx->ring, rp);
@@ -594,20 +545,11 @@ static void gsi_process_chan(struct gsi_xfer_compl_evt *evt,
 		notify->veid = evt->veid;
 	}
 
+	ch_ctx->stats.completed++;
 
 	WARN_ON(!ch_ctx->user_data[rp_idx].valid);
 	notify->xfer_user_data = ch_ctx->user_data[rp_idx].p;
-	/*
-	 * In suspend just before stopping the channel possible to receive
-	 * the IEOB interrupt and xfer pointer will not be processed in this
-	 * mode and moving channel poll mode. In resume after starting the
-	 * channel will receive the IEOB interrupt and xfer pointer will be
-	 * overwritten. To avoid this process all data in polling context.
-	 */
-	if (!(callback && ch_ctx->props.dir == GSI_CHAN_DIR_FROM_GSI)) {
-		ch_ctx->stats.completed++;
-		ch_ctx->user_data[rp_idx].valid = false;
-	}
+	ch_ctx->user_data[rp_idx].valid = false;
 
 	notify->chan_user_data = ch_ctx->props.chan_user_data;
 	notify->evt_id = evt->code;
@@ -626,18 +568,10 @@ static void gsi_process_evt_re(struct gsi_evt_ctx *ctx,
 		struct gsi_chan_xfer_notify *notify, bool callback)
 {
 	struct gsi_xfer_compl_evt *evt;
-	struct gsi_chan_ctx *ch_ctx;
 
 	evt = (struct gsi_xfer_compl_evt *)(ctx->ring.base_va +
 			ctx->ring.rp_local - ctx->ring.base);
 	gsi_process_chan(evt, notify, callback);
-	/*
-	 * Increment RP local only in polling context to avoid
-	 * sys len mismatch.
-	 */
-	ch_ctx = &gsi_ctx->chan[evt->chid];
-	if (callback && ch_ctx->props.dir == GSI_CHAN_DIR_FROM_GSI)
-		return;
 	gsi_incr_ring_rp(&ctx->ring);
 	/* recycle this element */
 	gsi_incr_ring_wp(&ctx->ring);
@@ -874,14 +808,8 @@ static irqreturn_t gsi_isr(int irq, void *ctxt)
 			gsi_ctx->per.rel_clk_cb(gsi_ctx->per.user_data);
 		}
 	} else if (!gsi_ctx->per.clk_status_cb()) {
-	/* we only want to capture the gsi isr storm here */
-		if (atomic_read(&gsi_ctx->num_unclock_irq) ==
-			GSI_IRQ_STORM_THR)
-			gsi_ctx->per.enable_clk_bug_on();
-		atomic_inc(&gsi_ctx->num_unclock_irq);
 		return IRQ_HANDLED;
 	} else {
-		atomic_set(&gsi_ctx->num_unclock_irq, 0);
 		gsi_handle_irq();
 	}
 	return IRQ_HANDLED;

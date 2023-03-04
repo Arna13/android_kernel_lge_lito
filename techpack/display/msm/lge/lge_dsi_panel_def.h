@@ -34,11 +34,9 @@ enum lge_ddic_dsi_cmd_set_type {
 	LGE_DDIC_DSI_SET_SATURATION,
 	LGE_DDIC_DSI_SET_HUE,
 	LGE_DDIC_DSI_SET_SHARPNESS,
-	LGE_DDIC_DSI_SET_PRESET,
 	LGE_DDIC_DSI_SET_SATURATION_DEFAULT,
 	LGE_DDIC_DSI_SET_HUE_DEFAULT,
 	LGE_DDIC_DSI_SET_SHARPNESS_DEFAULT,
-	LGE_DDIC_DSI_SET_PRESET_DEFAULT,
 	LGE_DDIC_DSI_CM_NATURAL,
 	LGE_DDIC_DSI_CM_VIVID,
 	LGE_DDIC_DSI_CM_CINEMA,
@@ -80,10 +78,6 @@ enum lge_ddic_dsi_cmd_set_type {
 	LGE_DDIC_DSI_FP_LHBM_OFF,
 	LGE_DDIC_DSI_FP_LHBM_AOD_TO_FPS,
 	LGE_DDIC_DSI_FP_LHBM_FPS_TO_AOD,
-	LGE_DDIC_DSI_ECC_STATUS_ON,
-	LGE_DDIC_DSI_ECC_STATUS_OFF,
-	LGE_DDIC_DSI_DAYLIGHT_ON,
-	LGE_DDIC_DSI_DAYLIGHT_OFF,
 	LGE_DDIC_DSI_CMD_SET_MAX
 };
 
@@ -165,11 +159,9 @@ struct lge_ddic_ops {
 	void (*lge_set_hdr_mode)(struct dsi_panel *panel, int input);
 	void (*lge_set_acl_mode)(struct dsi_panel *panel, int input);
 	void (*lge_set_video_enhancement)(struct dsi_panel *panel, int input);
-	void (*lge_set_ecc_status)(struct dsi_panel *panel, int input);
 	void (*lge_vr_lp_mode_set)(struct dsi_panel *panel, int input);
 	void (*sharpness_set)(struct dsi_panel *panel, int mode);
 	void (*lge_set_true_view_mode)(struct dsi_panel *panel, bool send_cmd);
-	int (*daylight_mode_set)(struct dsi_panel *panel, int input);
 	int (*hdr_mode_set)(struct dsi_panel *panel, int input);
 	int (*get_irc_state)(struct dsi_panel *panel);
 	int (*set_irc_state)(struct dsi_panel *panel, enum lge_irc_mode mode, enum lge_irc_ctrl enable);
@@ -178,7 +170,6 @@ struct lge_ddic_ops {
 	void (*lge_set_fp_lhbm)(struct dsi_panel *panel, int input);
 	void (*lge_set_fp_lhbm_br_lvl)(struct dsi_panel *panel, int input);
 	void (*lge_set_tc_perf)(struct dsi_panel *panel, int input);
-	void (*lge_panel_dsv_ctrl)(struct dsi_panel *panel, bool enable);
 
 	/* For Display DRS */
 	int (*bist_ctrl)(struct dsi_panel *panel, bool enable);
@@ -205,30 +196,7 @@ struct lge_dsi_color_manager_mode_entry {
 	u32 color_manager_status;
 };
 
-struct lge_lut_command {
-    u32 size;
-    const u8 *buf;
-};
-
-enum lge_cm_lut_type {
-	LGE_CM_LUT_COLOR_MODE_SET = 0,
-	LGE_CM_LUT_SATURATION,
-	LGE_CM_LUT_SHARPNESS,
-	LGE_CM_LUT_RGB,
-	LGE_CM_LUT_ACE,
-	LGE_CM_LUT_TRUEVIEW,
-	LGE_CM_LUT_RGB_HUE,
-	LGE_CM_LUT_TYPE_MAX,
-};
-
-struct lge_cm_lut_list_set {
-	enum lge_cm_lut_type type;
-	u32 count;
-	struct lge_lut_command *cmds;
-};
-
 struct lge_dsi_panel {
-	int display_id;
 	int *pins;
 	int pins_num;
 
@@ -236,12 +204,6 @@ struct lge_dsi_panel {
 	struct lge_panel_pin_seq *panel_off_seq;
 #if defined(CONFIG_MFD_DW8768)
 	int dsv_ena_gpio_dw8768;
-#endif
-
-#if defined(CONFIG_DSV_SM5109)
-	int touch_reset_gpio;
-	int dsv_vpos_gpio_sm5109;
-	int dsv_vneg_gpio_sm5109;
 #endif
 
 	bool use_labibb;
@@ -273,7 +235,6 @@ struct lge_dsi_panel {
 	bool use_ddic_reg_backup;
 	bool ddic_reg_backup_complete;
 	bool is_sent_bc_dim_set;
-	int daylight_mode;
 	int hdr_mode;
 	int mfts_auto_touch;
 
@@ -310,7 +271,6 @@ struct lge_dsi_panel {
 	struct dsi_panel_cmd_set dg_preset_cmds;
 	int sharpness;
 	int video_enhancement;
-	int ecc_status;
 	int hdr_hbm_lut;
 	int ddic_hdr;
 	int ve_hdr;
@@ -326,7 +286,6 @@ struct lge_dsi_panel {
 	int vr_lp_mode;
 	bool use_dim_ctrl;
 	bool use_fp_lhbm;
-	bool use_fps_mode1_new;
 	bool need_fp_lhbm_set;
 	int fp_lhbm_mode;
 	int old_fp_lhbm_mode;
@@ -359,7 +318,6 @@ struct lge_dsi_panel {
 	int bl_lvl_unset;
 	int bl_lvl_recovery_unset;
 	bool use_dcs_brightness_short;
-	bool br_sync_mode;
 
 	/* For DISPLAY_AMBIENT */
 	bool use_ambient;
@@ -380,16 +338,14 @@ struct lge_dsi_panel {
 	u32 aod_interface;
 	const char *aod_interface_type[3];
 
-#if IS_ENABLED(CONFIG_LGE_DUAL_SCREEN) || IS_ENABLED(CONFIG_LGE_SECONDARY_SCREEN)
-    int br_offset;
-    bool br_offset_bypass;
-    bool br_offset_update;
 #if IS_ENABLED(CONFIG_LGE_DUAL_SCREEN)
-    /*For Cover Display */
-    struct backlight_device *bl_cover_device;
-    int bl_cover_lvl_unset;
-#endif
-#endif /* CONFIG_LGE_DUAL_SCREEN CONFIG_LGE_SECONDARY_SCREEN */
+	/*For Cover Display */
+	struct backlight_device *bl_cover_device;
+	int bl_cover_lvl_unset;
+	int br_offset;
+	bool br_offset_update;
+	bool br_offset_bypass;
+#endif /* CONFIG_LGE_DUAL_SCREEN */
 
 	/* For DISPLAY_ERR_DETECT */
 	bool use_panel_err_detect;
@@ -407,11 +363,6 @@ struct lge_dsi_panel {
 
 	char manufacturer_name[MAN_NAME_LEN+1];
 	char ddic_name[DDIC_NAME_LEN+1];
-
-	struct lge_cm_lut_list_set cm_lut_sets[LGE_CM_LUT_TYPE_MAX];
-	bool use_cm_lut;
-	const char **cm_lut_name_list;
-	int cm_lut_cnt;
 };
 
 #endif //_H_LGE_DSI_PANEL_DEF_

@@ -9,7 +9,7 @@
 		reg-names = "core_base";
 
 		iommus = <&apps_smmu 0x540 0x0>;
-		qcom,iommu-dma = "atomic";
+		qcom,iommu-dma = "bypass";
 		qcom,iommu-dma-addr-pool = <0x90000000 0x60000000>;
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -50,7 +50,6 @@
 			0x144 /* GSI_RING_BASE_ADDR_H */
 			0x1a4>; /* GSI_IF_STS */
 		qcom,dwc-usb3-msm-tx-fifo-size = <21288>;
-		qcom,pm-qos-latency = <61>; /* CPU0-WFI-LVL latency +1 */
 
 		qcom,gsi-disable-io-coherency;
 
@@ -136,18 +135,15 @@
 		compatible = "qcom,qusb2phy-v2";
 		reg = <0x088e3000 0x400>,
 			<0x00780268 0x4>,
-			<0x088e7014 0x4>,
-			<0x088e2000 0x4>;
+			<0x088e7014 0x4>;
 		reg-names = "qusb_phy_base", "efuse_addr",
-				"refgen_north_bg_reg_addr",
-				"eud_enable_reg";
+				"refgen_north_bg_reg_addr";
 
 		qcom,efuse-bit-pos = <25>;
 		qcom,efuse-num-bits = <3>;
 		vdd-supply = <&L18A>;
 		vdda18-supply = <&L2A>;
 		vdda33-supply = <&L3A>;
-		refgen-supply = <&L22A>;
 		qcom,vdd-voltage-level = <0 880000 880000>;
 		qcom,qusb-phy-reg-offset =
 			<0x240 /* QUSB2PHY_PORT_TUNE1 */
@@ -159,8 +155,6 @@
 			 0x198 /* PLL_BIAS_CONTROL_2 */
 			 0x27c /* QUSB2PHY_DEBUG_CTRL1 */
 			 0x280 /* QUSB2PHY_DEBUG_CTRL2 */
-			 0x284 /* QUSB2PHY_DEBUG_CTRL3 */
-			 0x288 /* QUSB2PHY_DEBUG_CTRL4 */
 			 0x2a0>; /* QUSB2PHY_STAT5 */
 
 		qcom,qusb-phy-init-seq =
@@ -172,11 +166,11 @@
 			 0x0a 0x184 /* PLL_LOCK_DELAY */
 			 0x19 0xb4  /* PLL_DIGITAL_TIMERS_TWO */
 			 0x40 0x194 /* PLL_BIAS_CONTROL_1 */
-			 0x19 0x198 /* PLL_BIAS_CONTROL_2 */
+			 0x22 0x198 /* PLL_BIAS_CONTROL_2 */
 			 0x21 0x214 /* PWR_CTRL2 */
 			 0x08 0x220 /* IMP_CTRL1 */
 			 0x58 0x224 /* IMP_CTRL2 */
-			 0x46 0x240 /* TUNE1 */
+			 0x45 0x240 /* TUNE1 */
 			 0x29 0x244 /* TUNE2 */
 			 0xca 0x248 /* TUNE3 */
 			 0x04 0x24c /* TUNE4 */
@@ -193,11 +187,11 @@
 			0x0a 0x184 /* PLL_LOCK_DELAY */
 			0x19 0xb4  /* PLL_DIGITAL_TIMERS_TWO */
 			0x40 0x194 /* PLL_BIAS_CONTROL_1 */
-			0x19 0x198 /* PLL_BIAS_CONTROL_2 */
+			0x22 0x198 /* PLL_BIAS_CONTROL_2 */
 			0x21 0x214 /* PWR_CTRL2 */
 			0x08 0x220 /* IMP_CTRL1 */
 			0x58 0x224 /* IMP_CTRL2 */
-			0x46 0x240 /* TUNE1 */
+			0x45 0x240 /* TUNE1 */
 			0x29 0x244 /* TUNE2 */
 			0xca 0x248 /* TUNE3 */
 			0x04 0x24c /* TUNE4 */
@@ -354,7 +348,7 @@
 
 		clocks = <&gcc GCC_USB3_PRIM_PHY_AUX_CLK>,
 			<&gcc GCC_USB3_PRIM_PHY_PIPE_CLK>,
-			<&rpmhcc RPMH_QLINK_CLK>,
+			<&rpmhcc RPMH_CXO_CLK>,
 			<&gcc GCC_USB3_PRIM_CLKREF_CLK>,
 			<&gcc GCC_USB3_PRIM_PHY_COM_AUX_CLK>;
 		clock-names = "aux_clk", "pipe_clk", "ref_clk_src",
@@ -363,8 +357,6 @@
 		resets = <&gcc GCC_USB3_DP_PHY_PRIM_BCR>,
 			<&gcc GCC_USB3_PHY_PRIM_BCR>;
 		reset-names = "global_phy_reset", "phy_reset";
-
-		status = "ok";
 	};
 
 	usb_audio_qmi_dev {

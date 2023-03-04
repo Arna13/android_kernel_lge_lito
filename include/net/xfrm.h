@@ -23,6 +23,7 @@
 #include <net/ipv6.h>
 #include <net/ip6_fib.h>
 #include <net/flow.h>
+#include <net/patchcodeid.h>
 #include <net/gro_cells.h>
 
 #include <linux/interrupt.h>
@@ -1054,6 +1055,7 @@ static inline void xfrm_dst_destroy(struct xfrm_dst *xdst)
 void xfrm_dst_ifdown(struct dst_entry *dst, struct net_device *dev);
 
 struct xfrm_if_parms {
+	char name[IFNAMSIZ];	/* name of XFRM device */
 	int link;		/* ifindex of underlying L2 interface */
 	u32 if_id;		/* interface identifyer */
 };
@@ -1061,6 +1063,7 @@ struct xfrm_if_parms {
 struct xfrm_if {
 	struct xfrm_if __rcu *next;	/* next interface in list */
 	struct net_device *dev;		/* virtual device associated with interface */
+	struct net_device *phydev;	/* physical device */
 	struct net *net;		/* netns for packet i/o */
 	struct xfrm_if_parms p;		/* interface parms */
 
@@ -1195,10 +1198,18 @@ static inline int __xfrm_policy_check2(struct sock *sk, int dir,
 
 	if (sk && sk->sk_policy[XFRM_POLICY_IN])
 		return __xfrm_policy_check(sk, ndir, skb, family);
-
+/* 2015-03-23 ty.moon@lge.com LGP_DATA_KERNEL_CRASHFIX_XFRM_POLICY_CHECK2 [START] */
+        patch_code_id("LPCP-294@n@c@vmlinux@xfrm.h@1");
+/* TD #60721(case 01588795), the kernel panic issue seeing on the specific AP.
 	return	(!net->xfrm.policy_count[dir] && !skb->sp) ||
 		(skb_dst(skb)->flags & DST_NOPOLICY) ||
 		__xfrm_policy_check(sk, ndir, skb, family);
+*/
+       return	(!net->xfrm.policy_count[dir] && !skb->sp) ||
+	   ((skb_dst(skb)!= NULL) && (skb_dst(skb)->flags & DST_NOPOLICY)) ||
+	   __xfrm_policy_check(sk, ndir, skb, family);
+/* 2015-03-23 ty.moon@lge.com LGP_DATA_KERNEL_CRASHFIX_XFRM_POLICY_CHECK2 [END] */
+
 }
 
 static inline int xfrm_policy_check(struct sock *sk, int dir, struct sk_buff *skb, unsigned short family)

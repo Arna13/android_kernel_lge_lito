@@ -13,8 +13,6 @@ static DEFINE_MUTEX(media_ext_list_lock);
 
 char saved_file_ext_list[MAX_MEDIA_EXT_LENGTH];
 const char *asec_extension = "ASEC";
-const char* exclude_list[2] = {"/Android/data/", "/Android/obb/"};
-
 /* global flag to check whether the media file extsion list set or not */
 bool is_saved_file_ext_list_set = false;
 
@@ -157,25 +155,5 @@ int ecryptfs_media_file_search(const unsigned char *filename)
 		return 0;
 	}
 
-	return 0;
-}
-int ecryptfs_should_exclude_encrypt(struct dentry *ecryptfs_dentry)
-{
-	char *pathname = NULL;
-	char buf[PATH_NAME_MAX_LENGTH] = {0,};
-	int i;
-
-	pathname = dentry_path(ecryptfs_dentry, buf, PATH_NAME_MAX_LENGTH);
-
-	if (pathname == NULL || IS_ERR(pathname)) {
-		pr_err("%s :: pathname is too long : %s\n", __func__, ecryptfs_dentry->d_name.name);
-		return 0;
-	}
-
-	for (i=0; i<2; i++) {
-		if (!strncmp(pathname, exclude_list[i], strlen(exclude_list[i]))) {
-			return 1;
-		}
-	}
 	return 0;
 }

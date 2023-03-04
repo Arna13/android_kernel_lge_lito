@@ -29,7 +29,7 @@
 
 static char ime_str[3][8] = {"OFF", "ON", "SWYPE"};
 static char incoming_call_str[7][15] = {"IDLE", "RINGING", "OFFHOOK", "CDMA_RINGING", "CDMA_OFFHOOK", "LTE_RINGING", "LTE_OFFHOOK"};
-static char mfts_str[5][8] = {"NONE", "FOLDER", "FLAT", "CURVED", "DS_FLAT"};
+static char mfts_str[7][8] = {"NONE", "FOLDER", "FLAT", "CURVED", "NONE","NONE","DS_FLAT"};
 
 static int ignore_compared_event = 0;
 
@@ -162,7 +162,6 @@ static ssize_t store_lpwg_data(struct device *dev,
 	TOUCH_I("%s : reply = %d\n", __func__, reply);
 
 	atomic_set(&ts->state.uevent, UEVENT_IDLE);
-	complete(&ts->uevent_complete);
 	pm_relax(ts->dev);
 
 	return count;
@@ -1211,7 +1210,7 @@ static ssize_t store_secure_touch_sub_enable(struct device *dev,
 			break;
 		}
 
-#ifdef CONFIG_LGE_TOUCH_SUB_PEN
+#ifdef CONFIG_LGE_TOUCH_PEN
 		ts->driver->stop_pen_sensing(dev, true);
 #endif
 		reinit_completion(&ts->st_powerdown);
@@ -1365,187 +1364,7 @@ static ssize_t show_md_test_from_md(struct device *dev,
 }
 */
 
-#if defined(CONFIG_LGE_TOUCH_SUB_DEX)
-static ssize_t show_touch_dex_mode(struct device *dev, char *buf)
-{
-	struct touch_sub_core_data *ts = to_touch_sub_core(dev);
-	int ret = 0;
 
-	TOUCH_TRACE();
-
-	ret += snprintf(buf + ret, PAGE_SIZE, "%d\n",
-			ts->touch_dex.enable);
-	TOUCH_I("%s: enable = %d, button enable = %d, dex_area(%d,%d)(%d,%d), button_area(%d,%d)(%d,%d)\n",
-			__func__, ts->touch_dex.enable, ts->touch_dex.button_enable,
-			ts->touch_dex.area.x1, ts->touch_dex.area.y1, ts->touch_dex.area.x2, ts->touch_dex.area.y2,
-			ts->touch_dex.button_area.x1, ts->touch_dex.button_area.y1, ts->touch_dex.button_area.x2, ts->touch_dex.button_area.y2);
-	return ret;
-}
-
-static ssize_t store_touch_dex_mode(struct device *dev,
-		const char *buf, size_t count)
-{
-	struct touch_sub_core_data *ts = to_touch_sub_core(dev);
-	int enable = 0;
-	int offset_y = 0;
-	int start_x = 0;
-	int start_y = 0;
-	int width = 0;
-	int height = 0;
-
-	TOUCH_TRACE();
-
-	if (sscanf(buf, "%d %d %d %d %d %d", &enable, &offset_y, &start_x,
-				&start_y, &width, &height) <= 0)
-		return count;
-
-	TOUCH_I("%s: enable = %d, offset_y = %d, start_x = %d, start_y = %d, width = %d, height = %d\n",
-			__func__, enable, offset_y, start_x,
-			start_y, width, height);
-
-	if ((enable > 1) || (enable < 0)) {
-		TOUCH_E("invalid enable(%d)\n", enable);
-		return count;
-	}
-
-	if (ts->touch_dex.enable != enable) {
-		mutex_lock(&ts->lock);
-		touch_sub_interrupt_control(ts->dev, INTERRUPT_DISABLE);
-		touch_sub_report_all_event(ts);
-		atomic_set(&ts->state.dex_mode, enable);
-		touch_sub_interrupt_control(ts->dev, INTERRUPT_ENABLE);
-		mutex_unlock(&ts->lock);
-	}
-
-	if (enable) {
-		ts->touch_dex.enable = true;
-		ts->touch_dex.area.x1 = (start_x & 0xFFFF);
-		ts->touch_dex.area.y1 = (start_y & 0xFFFF);
-		ts->touch_dex.area.x2 = ts->touch_dex.area.x1 + (width & 0xFFFF) - 1;
-		ts->touch_dex.area.y2 = ts->touch_dex.area.y1 + (height & 0xFFFF) - 1;
-		ts->touch_dex.button_area.x1 = (start_x >> 16) & 0xFFFF;
-		ts->touch_dex.button_area.y1 = (start_y >> 16) & 0xFFFF;
-
-		if (((width >> 16) & 0xFFFF) == 0) {// if button does not exist, button_area.x2 and button_area.y2 is 0
-			ts->touch_dex.button_area.x2 = 0;
-			ts->touch_dex.button_area.y2 = 0;
-			ts->touch_dex.button_enable = false;
-		} else {
-			ts->touch_dex.button_area.x2 = ts->touch_dex.button_area.x1 + ((width >> 16) & 0xFFFF) - 1;
-			ts->touch_dex.button_area.y2 = ts->touch_dex.button_area.y1 + ((height >> 16) & 0xFFFF) - 1;
-			ts->touch_dex.button_enable = true;
-		}
-
-		TOUCH_I("%s: enable = %d, button_enable = %d, dex_area(%d,%d)(%d,%d), button_area(%d,%d)(%d,%d)\n",
-			__func__, ts->touch_dex.enable, ts->touch_dex.button_enable,
-			ts->touch_dex.area.x1, ts->touch_dex.area.y1, ts->touch_dex.area.x2, ts->touch_dex.area.y2,
-			ts->touch_dex.button_area.x1, ts->touch_dex.button_area.y1, ts->touch_dex.button_area.x2, ts->touch_dex.button_area.y2);
-
-
-	} else {
-		ts->touch_dex.enable = false;
-		ts->touch_dex.button_enable = false;
-		TOUCH_I("%s: disable = %d, button_disable = %d\n", __func__, ts->touch_dex.enable, ts->touch_dex.button_enable);
-	}
-
-
-	return count;
-}
-#endif
-
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-static ssize_t read_app_fw_upgrade(struct file *filp,
-		struct kobject *kobj, struct bin_attribute *bin_attr,
-		char *buf, loff_t off, size_t count)
-{
-	struct touch_core_data *ts = container_of(kobj, struct touch_core_data, kobj);
-	int ret = 0;
-	char *upgrade_status = NULL;
-
-	TOUCH_TRACE();
-
-	TOUCH_I("%s: ts->app_fw_upgrade.status = %d\n",
-			__func__, ts->app_fw_upgrade.status);
-
-	switch (ts->app_fw_upgrade.status) {
-		case APP_FW_UPGRADE_IDLE:
-			upgrade_status = "IDLE";
-			break;
-		case APP_FW_UPGRADE_GET_DATA:
-			ts->app_fw_upgrade.status = APP_FW_UPGRADE_FLASHING;
-			ts->force_fwup = 1;
-			queue_delayed_work(ts->wq, &ts->app_upgrade_work, 0);
-		case APP_FW_UPGRADE_FLASHING:
-			upgrade_status = "FLASHING";
-			break;
-		default:
-			TOUCH_E("unknown status\n");
-			upgrade_status = "UNKNOWN";
-			break;
-	}
-
-	ret = snprintf(buf, count + 1, upgrade_status + off);
-
-	if (ret != 0) {
-		if (ret > count)
-			ret = count;
-		TOUCH_I("ret:%d count:%d %s\n", ret, count, buf);
-	}
-
-	return ret;
-}
-
-static ssize_t write_app_fw_upgrade(struct file *filp,
-		struct kobject *kobj, struct bin_attribute *bin_attr,
-		char *buf, loff_t off, size_t count)
-{
-	struct touch_core_data *ts = container_of(kobj, struct touch_core_data, kobj);
-	int ret = 0;
-
-	TOUCH_TRACE();
-
-	mutex_lock(&ts->lock);
-
-	TOUCH_I("%s: ts->app_fw_upgrade.status = %d\n",
-			__func__, ts->app_fw_upgrade.status);
-
-	switch (ts->app_fw_upgrade.status) {
-	case APP_FW_UPGRADE_IDLE:
-		ts->app_fw_upgrade.status = APP_FW_UPGRADE_GET_DATA;
-		ts->app_fw_upgrade.max_data_size = 400 * 1024;
-		ts->app_fw_upgrade.offset = 0;
-		ts->app_fw_upgrade.data = kzalloc(ts->app_fw_upgrade.max_data_size, GFP_KERNEL);
-		TOUCH_I("%s: ts->app_fw_upgrade.max_data_size = %d, ts->app_fw_upgrade.offset = %d, ts->app_fw_upgrade.data = %p\n",
-				__func__,
-				(int)ts->app_fw_upgrade.max_data_size,
-				(int)ts->app_fw_upgrade.offset,
-				ts->app_fw_upgrade.data);
-	case APP_FW_UPGRADE_GET_DATA:
-		if ((ts->app_fw_upgrade.offset + count) < ts->app_fw_upgrade.max_data_size) {
-			TOUCH_I("%s: ts->app_fw_upgrade.offset(before) = %d\n",
-					__func__, (int)ts->app_fw_upgrade.offset);
-			memcpy(ts->app_fw_upgrade.data + ts->app_fw_upgrade.offset, buf, count);
-			ts->app_fw_upgrade.offset += count;
-			TOUCH_I("%s: ts->app_fw_upgrade.offset(after) = %d\n",
-					__func__, (int)ts->app_fw_upgrade.offset);
-			ret = count;
-		} else {
-			TOUCH_E("data is full.\n");
-		}
-		break;
-	case APP_FW_UPGRADE_FLASHING:
-		TOUCH_E("flashing...\n");
-		break;
-	default:
-		TOUCH_E("unknown status\n");
-		break;
-	}
-
-	mutex_unlock(&ts->lock);
-
-	return ret;
-}
-#endif
 static TOUCH_ATTR(platform_data, show_platform_data, NULL);
 static TOUCH_ATTR(fw_upgrade, show_upgrade, store_upgrade);
 static TOUCH_ATTR(lpwg_data, show_lpwg_data, store_lpwg_data);
@@ -1580,20 +1399,10 @@ static TOUCH_ATTR(secure_touch, show_secure_touch, NULL);
 static TOUCH_ATTR(secure_touch_sub_devinfo, show_secure_touch_sub_devinfo, NULL);
 #endif
 static TOUCH_ATTR(ignore_event, show_ignore_event, store_ignore_event);
-#if defined(CONFIG_LGE_TOUCH_SUB_DEX)
-static TOUCH_ATTR(touch_dex_mode, show_touch_dex_mode, store_touch_dex_mode);
-#endif
 /*
 static TOUCH_ATTR(module_test, show_module_touch_sub_test, store_module_touch_sub_test);
 static TOUCH_MODULE_ATTR(module_test_from_md, show_md_test_from_md, store_md_test_from_md);
 */
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-#define TOUCH_BIN_ATTR(_name, _read, _write, _size)		\
-		struct bin_attribute touch_bin_attr_##_name	\
-		= __BIN_ATTR(_name, 0644, _read, _write, _size)
-#define APP_FW_UPGRADE_BUF	(400 * 1024)
-static TOUCH_BIN_ATTR(app_fw_upgrade, read_app_fw_upgrade, write_app_fw_upgrade, APP_FW_UPGRADE_BUF);
-#endif
 
 static struct attribute *touch_sub_attribute_list[] = {
 	&touch_sub_attr_platform_data.attr,
@@ -1625,9 +1434,6 @@ static struct attribute *touch_sub_attribute_list[] = {
 	&touch_sub_attr_secure_touch_sub_devinfo.attr,
 #endif
 	&touch_sub_attr_ignore_event.attr,
-#if defined(CONFIG_LGE_TOUCH_SUB_DEX)
-	&touch_sub_attr_touch_dex_mode.attr,
-#endif
 //	&touch_sub_attr_module_test.attr,
 	NULL,
 };
@@ -1636,17 +1442,8 @@ static struct attribute *touch_sub_attribute_module_list[] = {
 	NULL,
 };
 
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-static struct bin_attribute *touch_bin_attribute_list[] = {
-	&touch_bin_attr_app_fw_upgrade,
-	NULL,
-};
-#endif
 static const struct attribute_group touch_sub_attribute_group = {
 	.attrs = touch_sub_attribute_list,
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-	.bin_attrs = touch_bin_attribute_list,
-#endif
 };
 
 static const struct attribute_group touch_sub_attribute_group_module = {
@@ -1767,12 +1564,6 @@ int touch_sub_init_sysfs(struct touch_sub_core_data *ts)
 				&touch_sub_attr_active_pen_status.attr, NULL);
 	}
 
-#if defined(CONFIG_LGE_TOUCH_SUB_DEX)
-	if (!ts->role.use_dex_mode) {
-		sysfs_remove_file_from_group(&ts->kobj,
-				&touch_sub_attr_touch_dex_mode.attr, NULL);
-	}
-#endif
 error:
 	return ret;
 }

@@ -1,6 +1,6 @@
 /**
    @copyright
-   Copyright (c) 2013 - 2019, Rambus Inc. All rights reserved.
+   Copyright (c) 2013 - 2018, INSIDE Secure Oy. All rights reserved.
 */
 
 #include <linux/kernel.h>
@@ -19,7 +19,7 @@ DEFINE_RWLOCK(spd_net_lock);
 
 static int init_called = 0;
 
-static int __init linux_spd_init(void)
+int __init linux_spd_init(void)
 {
     int status = 0;
 
@@ -42,7 +42,7 @@ static int __init linux_spd_init(void)
     return status;
 }
 
-static void __exit linux_spd_cleanup(void)
+void __exit linux_spd_cleanup(void)
 {
     DEBUG_HIGH("Kernel spd cleaning up.");
 

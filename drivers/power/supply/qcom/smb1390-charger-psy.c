@@ -21,10 +21,6 @@
 #include <linux/regmap.h>
 #include <linux/iio/consumer.h>
 
-#ifdef CONFIG_MACH_LITO_ACELM
-#include <soc/qcom/lge/board_lge.h>
-#endif
-
 #define MISC_CSIR_LSB_REG		0x9F1
 #define MISC_CSIR_MSB_REG		0x9F2
 #define CORE_STATUS1_REG		0x1006
@@ -1384,10 +1380,6 @@ static void smb1390_taper_work(struct work_struct *work)
 				(smb1390_is_adapter_cc_mode(chip) ?
 							CC_MODE_TAPER_DELTA_UA :
 							DEFAULT_TAPER_DELTA_UA);
-#ifdef CONFIG_LGE_PM
-			if (get_effective_result(chip->fcc_votable) < 2000000)
-				delta_fcc_uA = DEFAULT_TAPER_DELTA_UA;
-#endif
 			fcc_uA = get_effective_result(chip->fcc_votable)
 								- delta_fcc_uA;
 			smb1390_dbg(chip, PR_INFO, "taper work reducing FCC to %duA\n",
@@ -1465,30 +1457,18 @@ static int smb1390_get_prop_charging_enabled(struct smb1390 *chip)
 	extern bool unified_nodes_show(const char* key, char* value);
 	union power_supply_propval capa = {0, };
 	char buff [16] = { 0, };
-	int test, status, status2, ret = false, vbat = 0, vusb = 0;
+	int test, status, status2, ret = false;
 	static bool pass = false;
-	struct power_supply* psy_usb = power_supply_get_by_name("usb");
-	struct power_supply* psy_bms = power_supply_get_by_name("bms");
-	union power_supply_propval val = { 0, };
 
-	vbat = (psy_bms && !power_supply_get_property(
-					psy_bms, POWER_SUPPLY_PROP_VOLTAGE_NOW, &val))
-					? val.intval/1000 : 0;
-	vusb = (psy_usb && !power_supply_get_property(
-					psy_usb, POWER_SUPPLY_PROP_VOLTAGE_NOW, &val))
-					? val.intval/1000 : 0;
 	if (!smb1390_read(chip, CORE_STATUS1_REG, &status)
 			&& !smb1390_read(chip, CORE_STATUS2_REG, &status2)) {
 		if (((status == 0x4) || (status == 0xC))&& (status2 == 0x80)) {
-			smb1390_dbg(chip, PR_LGE, "success vbat=%d, vusb=%d\n", vbat, vusb);
 			ret = true;
 			pass = true;
 		} else if (is_psy_voter_available(chip) && !power_supply_get_property(
 				chip->batt_psy, POWER_SUPPLY_PROP_CAPACITY, &capa)
-				&& capa.intval >= 60) {
+				&& capa.intval >= 70) {
 			ret = true;
-		} else {
-			smb1390_dbg(chip, PR_LGE, "waiting... vbat=%d, vusb=%d\n", vbat, vusb);
 		}
 	}
 
@@ -2133,7 +2113,7 @@ static int smb1390_master_probe(struct smb1390 *chip)
 		return rc;
 	}
 
-	chip->cp_ws = wakeup_source_register(NULL, "qcom-chargepump");
+	chip->cp_ws = wakeup_source_register("qcom-chargepump");
 	if (!chip->cp_ws)
 		return -ENOMEM;
 
@@ -2315,27 +2295,6 @@ static int smb1390_slave_probe(struct smb1390 *chip)
 	return rc;
 }
 
-#ifdef CONFIG_MACH_LITO_ACELM
-static bool confirm_lge_smb1390(void) {
-	if (lge_get_laop_operator() == OP_OPEN_KR ||
-		lge_get_laop_operator() == OP_SKT_KR  ||
-		lge_get_laop_operator() == OP_KT_KR   ||
-		lge_get_laop_operator() == OP_LGU_KR  ){
-		return true;
-	}
-
-	/*
-	if (lge_get_sku_carrier() == HW_SKU_KR     ||
-		lge_get_sku_carrier() == HW_SKU_KR_LGU ||
-		lge_get_sku_carrier() == HW_SKU_KR_SKT ||
-		lge_get_sku_carrier() == HW_SKU_KR_KT  ){
-		return true;
-	}
-	*/
-	return false;
-}
-#endif
-
 static int smb1390_probe(struct platform_device *pdev)
 {
 	struct smb1390 *chip;
@@ -2359,17 +2318,6 @@ static int smb1390_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, chip);
-
-#ifdef CONFIG_MACH_LITO_ACELM
-	if (confirm_lge_smb1390() == true) {
-		smb1390_dbg(chip, PR_LGE,
-			"ACE doesn't support SMB1390 for KR(code=%d, sku=%d).\n",
-			lge_get_laop_operator(), lge_get_sku_carrier());
-		rc = 0;
-		goto cleanup;
-	}
-#endif
-
 	chip->cp_role = (int)of_device_get_match_data(chip->dev);
 	switch (chip->cp_role) {
 	case CP_MASTER:
@@ -2409,11 +2357,6 @@ static int smb1390_remove(struct platform_device *pdev)
 {
 	struct smb1390 *chip = platform_get_drvdata(pdev);
 
-#ifdef CONFIG_MACH_LITO_ACELM
-	if (confirm_lge_smb1390() == true)
-		return 0;
-#endif
-
 	if (chip->cp_role !=  CP_MASTER) {
 		platform_set_drvdata(pdev, NULL);
 		return 0;
@@ -2438,11 +2381,6 @@ static void smb1390_shutdown(struct platform_device *pdev)
 	struct smb1390 *chip = platform_get_drvdata(pdev);
 	int rc;
 
-#ifdef CONFIG_MACH_LITO_ACELM
-	if (confirm_lge_smb1390() == true)
-		return;
-#endif
-
 	power_supply_unreg_notifier(&chip->nb);
 	/* Disable SMB1390 */
 	smb1390_dbg(chip, PR_MISC, "Disabling SMB1390\n");
@@ -2456,11 +2394,6 @@ static int smb1390_suspend(struct device *dev)
 {
 	struct smb1390 *chip = dev_get_drvdata(dev);
 
-#ifdef CONFIG_MACH_LITO_ACELM
-	if (confirm_lge_smb1390() == true)
-		return 0;
-#endif
-
 	chip->suspended = true;
 	return 0;
 }
@@ -2468,11 +2401,6 @@ static int smb1390_suspend(struct device *dev)
 static int smb1390_resume(struct device *dev)
 {
 	struct smb1390 *chip = dev_get_drvdata(dev);
-
-#ifdef CONFIG_MACH_LITO_ACELM
-	if (confirm_lge_smb1390() == true)
-		return 0;
-#endif
 
 	chip->suspended = false;
 

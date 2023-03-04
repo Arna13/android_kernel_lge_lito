@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2018, 2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
  */
 
 #include "cam_ois_dev.h"
@@ -8,12 +8,6 @@
 #include "cam_ois_soc.h"
 #include "cam_ois_core.h"
 #include "cam_debug_util.h"
-
-
-#ifdef CONFIG_MACH_LGE
-extern void oeis_create_sysfs(void);
-extern void oeis_destroy_sysfs(void);
-#endif
 
 static long cam_ois_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg)
@@ -33,25 +27,6 @@ static long cam_ois_subdev_ioctl(struct v4l2_subdev *sd,
 	return rc;
 }
 
-static int cam_ois_subdev_open(struct v4l2_subdev *sd,
-	struct v4l2_subdev_fh *fh)
-{
-	struct cam_ois_ctrl_t *o_ctrl =
-		v4l2_get_subdevdata(sd);
-
-	if (!o_ctrl) {
-		CAM_ERR(CAM_OIS, "o_ctrl ptr is NULL");
-			return -EINVAL;
-	}
-
-	mutex_lock(&(o_ctrl->ois_mutex));
-	o_ctrl->open_cnt++;
-	CAM_DBG(CAM_OIS, "OIS open count %d", o_ctrl->open_cnt);
-	mutex_unlock(&(o_ctrl->ois_mutex));
-
-	return 0;
-}
-
 static int cam_ois_subdev_close(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh)
 {
@@ -64,14 +39,7 @@ static int cam_ois_subdev_close(struct v4l2_subdev *sd,
 	}
 
 	mutex_lock(&(o_ctrl->ois_mutex));
-	if (o_ctrl->open_cnt <= 0) {
-		mutex_unlock(&(o_ctrl->ois_mutex));
-		return -EINVAL;
-	}
-	o_ctrl->open_cnt--;
-	CAM_DBG(CAM_OIS, "OIS open count %d", o_ctrl->open_cnt);
-	if (o_ctrl->open_cnt == 0)
-		cam_ois_shutdown(o_ctrl);
+	cam_ois_shutdown(o_ctrl);
 	mutex_unlock(&(o_ctrl->ois_mutex));
 
 	return 0;
@@ -143,7 +111,6 @@ static long cam_ois_init_subdev_do_ioctl(struct v4l2_subdev *sd,
 #endif
 
 static const struct v4l2_subdev_internal_ops cam_ois_internal_ops = {
-	.open  = cam_ois_subdev_open,
 	.close = cam_ois_subdev_close,
 };
 
@@ -230,15 +197,7 @@ static int cam_ois_i2c_driver_probe(struct i2c_client *client,
 	if (rc)
 		goto soc_free;
 
-
-#ifdef CONFIG_MACH_LGE
-	spin_lock_init(&o_ctrl->gyro_lock);
-	oeis_create_sysfs();
-	o_ctrl->ois_thread_running = false;
-#endif
-
 	o_ctrl->cam_ois_state = CAM_OIS_INIT;
-	o_ctrl->open_cnt = 0;
 
 	return rc;
 
@@ -262,10 +221,6 @@ static int cam_ois_i2c_driver_remove(struct i2c_client *client)
 		CAM_ERR(CAM_OIS, "ois device is NULL");
 		return -EINVAL;
 	}
-
-#ifdef CONFIG_MACH_LGE
-	oeis_destroy_sysfs();
-#endif
 
 	CAM_INFO(CAM_OIS, "i2c driver remove invoked");
 	soc_info = &o_ctrl->soc_info;
@@ -344,15 +299,7 @@ static int32_t cam_ois_platform_driver_probe(
 	o_ctrl->bridge_intf.device_hdl = -1;
 
 	platform_set_drvdata(pdev, o_ctrl);
-
-#ifdef CONFIG_MACH_LGE
-	spin_lock_init(&o_ctrl->gyro_lock);
-	oeis_create_sysfs();
-	o_ctrl->ois_thread_running = false;
-#endif
-
 	o_ctrl->cam_ois_state = CAM_OIS_INIT;
-	o_ctrl->open_cnt = 0;
 
 	return rc;
 unreg_subdev:
@@ -379,10 +326,6 @@ static int cam_ois_platform_driver_remove(struct platform_device *pdev)
 		CAM_ERR(CAM_OIS, "ois device is NULL");
 		return -EINVAL;
 	}
-
-#ifdef CONFIG_MACH_LGE
-	oeis_destroy_sysfs();
-#endif
 
 	CAM_INFO(CAM_OIS, "platform driver remove invoked");
 	soc_info = &o_ctrl->soc_info;

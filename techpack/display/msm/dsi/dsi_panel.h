@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _DSI_PANEL_H_
@@ -27,13 +27,6 @@
 #define DSI_CMD_PPS_SIZE 135
 
 #define DSI_MODE_MAX 32
-
-/*
- * Defining custom dsi msg flag,
- * continued from drm_mipi_dsi.h
- * Override to use async transfer
- */
-#define MIPI_DSI_MSG_ASYNC_OVERRIDE BIT(4)
 
 enum dsi_panel_rotation {
 	DSI_PANEL_ROTATE_NONE = 0,
@@ -114,7 +107,6 @@ struct dsi_backlight_config {
 	u32 bl_level;
 	u32 bl_scale;
 	u32 bl_scale_sv;
-	bool bl_inverted_dbv;
 
 	int en_gpio;
 	/* PWM params */
@@ -206,7 +198,6 @@ struct dsi_panel {
 	bool ulps_feature_enabled;
 	bool ulps_suspend_enabled;
 	bool allow_phy_power_off;
-	bool reset_gpio_always_on;
 	atomic_t esd_recovery_pending;
 
 	bool panel_initialized;

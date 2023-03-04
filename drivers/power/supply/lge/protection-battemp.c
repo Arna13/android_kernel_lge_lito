@@ -38,7 +38,7 @@ extern bool unified_bootmode_chargerlogo(void);
 
 static struct protection_battemp {
 	struct delayed_work	battemp_dwork;
-	struct wakeup_source	*battemp_wakelock;
+	struct wakeup_source	battemp_wakelock;
 #ifdef DEBUG_BTP
 	struct delayed_work	debug_btp_dwork;
 #endif
@@ -485,15 +485,15 @@ static void polling_status_work(struct work_struct* work) {
 		warning_wo_charging = health_jeita == POWER_SUPPLY_HEALTH_HOT;
 
 		if (warning_at_charging || warning_wo_charging) {
-			if (!battemp_me.battemp_wakelock->active) {
+			if (!battemp_me.battemp_wakelock.active) {
 				pr_battemp(UPDATE, "Acquiring wake lock\n");
-				__pm_stay_awake(battemp_me.battemp_wakelock);
+				__pm_stay_awake(&battemp_me.battemp_wakelock);
 			}
 		}
 		else {
-			if (battemp_me.battemp_wakelock->active) {
+			if (battemp_me.battemp_wakelock.active) {
 				pr_battemp(UPDATE, "Releasing wake lock\n");
-				__pm_relax(battemp_me.battemp_wakelock);
+				__pm_relax(&battemp_me.battemp_wakelock);
 			}
 		}
 
@@ -611,8 +611,8 @@ static bool battemp_create_preset(bool (*feed_protection_battemp)(bool* charging
 		return false;
 	}
 
-	battemp_me.battemp_wakelock = wakeup_source_register(NULL,
-			BATTEMP_WAKELOCK);
+	wakeup_source_init(&battemp_me.battemp_wakelock,
+		BATTEMP_WAKELOCK);
 
 	INIT_DELAYED_WORK(&battemp_me.battemp_dwork,
 		polling_status_work);
@@ -670,7 +670,7 @@ destroy:
 }
 
 void protection_battemp_destroy(void) {
-	wakeup_source_unregister(battemp_me.battemp_wakelock);
+	wakeup_source_trash(&battemp_me.battemp_wakelock);
 	cancel_delayed_work_sync(&battemp_me.battemp_dwork);
 #ifdef DEBUG_BTP
 	cancel_delayed_work_sync(&battemp_me.debug_btp_dwork);

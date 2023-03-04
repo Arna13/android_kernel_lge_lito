@@ -89,21 +89,6 @@ static inline void dwc3_gadget_move_pending_list_front(struct dwc3_request *req)
 	list_move(&req->list, &dep->pending_list);
 }
 
-/**
- * dwc3_gadget_move_cancelled_request - move @req to the cancelled_list
- * @req: the request to be moved
- *
- * Caller should take care of locking. This function will move @req from its
- * current list to the endpoint's cancelled_list.
- */
-static inline void dwc3_gadget_move_cancelled_request(struct dwc3_request *req)
-{
-	struct dwc3_ep		*dep = req->dep;
-
-	req->started = false;
-	list_move_tail(&req->list, &dep->cancelled_list);
-}
-
 static inline enum dwc3_link_state dwc3_get_link_state(struct dwc3 *dwc)
 {
 	u32 reg;
@@ -126,7 +111,7 @@ int dwc3_gadget_ep0_queue(struct usb_ep *ep, struct usb_request *request,
 		gfp_t gfp_flags);
 int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value, int protocol);
 void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum, bool force);
-int dwc3_stop_active_transfer_noioc(struct dwc3 *dwc, u32 epnum, bool force);
+void dwc3_stop_active_transfer_noioc(struct dwc3 *dwc, u32 epnum, bool force);
 void dwc3_ep_inc_enq(struct dwc3_ep *dep);
 void dwc3_ep_inc_deq(struct dwc3_ep *dep);
 

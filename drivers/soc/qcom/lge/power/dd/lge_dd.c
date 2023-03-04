@@ -36,9 +36,6 @@ void lge_dd_state_notify(void)
 	int ds_state = lge_prm_get_info(
 			LGE_PRM_INFO_DS_STATE);
 	int now_ds_state = LGE_PRM_DS_CONNECTION_OFF;
-	int swivel_state = lge_prm_get_info(
-			LGE_PRM_INFO_SWIVEL_STATE);
-	static int now_swivel_state = LGE_PRM_SWIVEL_CLOSE;
 	struct power_supply*	psy;
 
 	if (ds1_connect)
@@ -63,15 +60,6 @@ void lge_dd_state_notify(void)
 		if (g_sysfs_dev)
 			sysfs_notify(&g_sysfs_dev->kobj, NULL, "dd_phy_connect");
 	}
-
-	if (swivel_state != now_swivel_state) {
-		pr_err(PRM_TAG "swivel state is changed from %d to %d\n",
-				now_swivel_state, swivel_state);
-		now_swivel_state = swivel_state;
-
-		if (g_sysfs_dev)
-			sysfs_notify(&g_sysfs_dev->kobj, NULL, "swivel_state");
-	}
 }
 
 static ssize_t lge_dd_connect_show(struct device *dev,
@@ -80,7 +68,7 @@ static ssize_t lge_dd_connect_show(struct device *dev,
 	int ret = 0;
 
 	int dd_connect = lge_prm_get_info(
-			LGE_PRM_INFO_DS_STATE);
+			LGE_PRM_INFO_DISPLAY_DD_STATE);
 
 	pr_err(PRM_TAG "DD connect = %d\n", dd_connect);
 
@@ -109,26 +97,9 @@ static ssize_t lge_dd_phy_connect_show(struct device *dev,
 }
 static DEVICE_ATTR(dd_phy_connect, S_IRUGO, lge_dd_phy_connect_show, NULL);
 
-static ssize_t lge_swivel_state_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	int ret = 0;
-
-	int swivel_state = lge_prm_get_info(
-			 LGE_PRM_INFO_SWIVEL_STATE);
-
-	pr_err(PRM_TAG "Swivel state = %d\n", swivel_state);
-
-	ret = scnprintf(buf, PAGE_SIZE, "%d\n", swivel_state);
-
-	return ret;
-}
-static DEVICE_ATTR(swivel_state, S_IRUGO, lge_swivel_state_show, NULL);
-
 static struct attribute *dd_fs_attrs[] = {
 	&dev_attr_dd_connect.attr,
 	&dev_attr_dd_phy_connect.attr,
-	&dev_attr_swivel_state.attr,
 	NULL,
 };
 

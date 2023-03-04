@@ -143,7 +143,6 @@ struct ffs_epfile {
 
 	struct ffs_data			*ffs;
 	struct ffs_ep			*ep;	/* P: ffs->eps_lock */
-	atomic_t			opened;
 
 	struct dentry			*dentry;
 
@@ -210,7 +209,7 @@ struct ffs_epfile {
 	unsigned char			in;	/* P: ffs->eps_lock */
 	unsigned char			isoc;	/* P: ffs->eps_lock */
 
-	bool				invalid;
+	unsigned char			_pad;
 };
 
 struct ffs_buffer {
@@ -977,16 +976,6 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 		if (file->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
-		/*
-		 * epfile->invalid is set when EPs are disabled. Userspace
-		 * might have stale threads continuing to do I/O and may be
-		 * unaware of that especially if we block here. Instead return
-		 * an error immediately here and don't allow any more I/O
-		 * until the epfile is reopened.
-		 */
-		if (epfile->invalid)
-			return -ENODEV;
-
 		ret = wait_event_interruptible(
 				epfile->ffs->wait, (ep = epfile->ep));
 		if (ret)
@@ -1148,7 +1137,6 @@ static ssize_t ffs_epfile_io(struct file *file, struct ffs_io_data *io_data)
 
 		ret = usb_ep_queue(ep->ep, req, GFP_ATOMIC);
 		if (unlikely(ret)) {
-			io_data->req = NULL;
 			usb_ep_free_request(ep->ep, req);
 			goto error_lock;
 		}
@@ -1188,16 +1176,15 @@ ffs_epfile_open(struct inode *inode, struct file *file)
 
 	ENTER();
 
-	ffs_log("%s: state %d setup_state %d flag %lu opened %u",
-		epfile->name, epfile->ffs->state, epfile->ffs->setup_state,
-		epfile->ffs->flags, atomic_read(&epfile->opened));
+	ffs_log("%s: state %d setup_state %d flag %lu", epfile->name,
+		epfile->ffs->state, epfile->ffs->setup_state,
+		epfile->ffs->flags);
 
 	if (WARN_ON(epfile->ffs->state != FFS_ACTIVE))
 		return -ENODEV;
 
 	file->private_data = epfile;
 	ffs_data_opened(epfile->ffs);
-	atomic_inc(&epfile->opened);
 
 	return 0;
 }
@@ -1207,7 +1194,6 @@ static int ffs_aio_cancel(struct kiocb *kiocb)
 	struct ffs_io_data *io_data = kiocb->private;
 	struct ffs_epfile *epfile = kiocb->ki_filp->private_data;
 	struct ffs_data *ffs = epfile->ffs;
-	unsigned long flags;
 	int value;
 
 	ENTER();
@@ -1215,14 +1201,14 @@ static int ffs_aio_cancel(struct kiocb *kiocb)
 	ffs_log("enter:state %d setup_state %d flag %lu", epfile->ffs->state,
 		epfile->ffs->setup_state, epfile->ffs->flags);
 
-	spin_lock_irqsave(&epfile->ffs->eps_lock, flags);
+	spin_lock_irq(&epfile->ffs->eps_lock);
 
 	if (likely(io_data && io_data->ep && io_data->req))
 		value = usb_ep_dequeue(io_data->ep, io_data->req);
 	else
 		value = -EINVAL;
 
-	spin_unlock_irqrestore(&epfile->ffs->eps_lock, flags);
+	spin_unlock_irq(&epfile->ffs->eps_lock);
 
 	ffs_log("exit: value %d", value);
 
@@ -1343,12 +1329,9 @@ ffs_epfile_release(struct inode *inode, struct file *file)
 	ENTER();
 
 	__ffs_epfile_read_buffer_free(epfile);
-	ffs_log("%s: state %d setup_state %d flag %lu opened %u",
-		epfile->name, epfile->ffs->state, epfile->ffs->setup_state,
-		epfile->ffs->flags, atomic_read(&epfile->opened));
-
-	if (atomic_dec_and_test(&epfile->opened))
-		epfile->invalid = false;
+	ffs_log("%s: state %d setup_state %d flag %lu", epfile->name,
+			epfile->ffs->state, epfile->ffs->setup_state,
+			epfile->ffs->flags);
 
 	ffs_data_closed(epfile->ffs);
 
@@ -1377,10 +1360,6 @@ static long ffs_epfile_ioctl(struct file *file, unsigned code,
 	if (!ep) {
 		if (file->f_flags & O_NONBLOCK)
 			return -EAGAIN;
-
-		/* don't allow any I/O until file is reopened */
-		if (epfile->invalid)
-			return -ENODEV;
 
 		ret = wait_event_interruptible(
 				epfile->ffs->wait, (ep = epfile->ep));
@@ -1955,10 +1934,6 @@ static void ffs_data_reset(struct ffs_data *ffs)
 	ffs->state = FFS_READ_DESCRIPTORS;
 	ffs->setup_state = FFS_NO_SETUP;
 	ffs->flags = 0;
-
-	ffs->ms_os_descs_ext_prop_count = 0;
-	ffs->ms_os_descs_ext_prop_name_len = 0;
-	ffs->ms_os_descs_ext_prop_data_len = 0;
 }
 
 
@@ -2047,8 +2022,6 @@ static int ffs_epfiles_create(struct ffs_data *ffs)
 			ffs_epfiles_destroy(epfiles, i - 1);
 			return -ENOMEM;
 		}
-
-		atomic_set(&epfile->opened, 0);
 	}
 
 	ffs->epfiles = epfiles;
@@ -2096,7 +2069,6 @@ static void ffs_func_eps_disable(struct ffs_function *func)
 		++ep;
 
 		if (epfile) {
-			epfile->invalid = true; /* until file is reopened */
 			epfile->ep = NULL;
 			__ffs_epfile_read_buffer_free(epfile);
 			++epfile;
@@ -3434,35 +3406,13 @@ static int _ffs_func_bind(struct usb_configuration *c,
 
 	/* And we're done */
 #ifdef CONFIG_LGE_USB_GADGET_MULTI_CONFIG
-	if (c->bConfigurationValue > 0) {
-		struct usb_configuration *c_tmp;
-
-		list_for_each_entry(c_tmp, &c->cdev->configs, list) {
-			struct usb_function *f_tmp;
-
-			if (c_tmp->bConfigurationValue >=
-			    c->bConfigurationValue)
-				break;
-
-			list_for_each_entry(f_tmp, &c_tmp->functions, list) {
-				struct ffs_data *ffs_tmp;
-
-				if (strcmp(f_tmp->name, f->name))
-					continue;
-
-				ffs_tmp = ffs_func_from_usb(f_tmp)->ffs;
-
-				if (!strcmp(ffs_tmp->dev_name, ffs->dev_name)) {
-					pr_info("%s: skip FUNCTIONFS_BIND event\n",
-						ffs->dev_name);
-					return 0;
-				}
-			}
-		}
-	}
-#endif
-
+	if (c->bConfigurationValue == 1)
+		ffs_event_add(ffs, FUNCTIONFS_BIND);
+	else
+		pr_info("%s: skip FUNCTIONFS_BIND event\n", ffs->dev_name);
+#else
 	ffs_event_add(ffs, FUNCTIONFS_BIND);
+#endif
 
 	return 0;
 
@@ -3520,10 +3470,8 @@ static int ffs_func_set_alt(struct usb_function *f,
 			return intf;
 	}
 
-	if (ffs->func) {
+	if (ffs->func)
 		ffs_func_eps_disable(ffs->func);
-		ffs->func = NULL;
-	}
 
 	if (ffs->state == FFS_DEACTIVATED) {
 		ffs->state = FFS_CLOSING;

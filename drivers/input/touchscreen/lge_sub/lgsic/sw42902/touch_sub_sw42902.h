@@ -154,7 +154,6 @@ static inline u32 sw42902_tc_sts_running_sts(int status)
 #define R_ADDR				(0x7DC)
 
 #define DEBUG_INFO			(0x63E)
-#define DEBUG_PALM			(0xF98)
 
 /* device control offset */
 #define tc_device_ctl			(0x0)
@@ -298,8 +297,7 @@ static inline u32 sw42902_tc_sts_running_sts(int status)
 #define GRAB_TOUCH_CTRL				(0x67)
 #define SPECIAL_IME_STATUS			(0x68)
 #define SPECIAL_CALL_INFO			(0x69)
-#define SPECIAL_SENSITIVE_INFO			(0x6A)
-#define FM_RADIO_CTRL				(0x83)
+#define SPECIAL_SENSITIVE_INFO		(0x6A)
 
 
 
@@ -356,12 +354,12 @@ static inline u32 sw42902_tc_sts_running_sts(int status)
 #define TC_STATUS_NORMAL_MASK		0x005080E0
 
 #define TC_STATUS_GLOBAL_RESET_BIT	0x00000000	/* NULL */
-/* (1<<5)|(1<<6)|(1<<7)|(1<<9)|(1<<10) */
-#define TC_STATUS_HW_RESET_BIT		0x000006E0
+/* (1<<6)|(1<<7)|(1<<9)|(1<<10) */
+#define TC_STATUS_HW_RESET_BIT		0x000006C0
 #define TC_STATUS_SW_RESET_BIT		0x00000000	/* NULL */
 #define TC_STATUS_FW_UPGRADE_BIT	0x00000000	/* NULL */
-/* (1<<13)|(1<<15)|(1<<20)|(1<<22)|(1<<28) */
-#define TC_STATUS_LOGGING_BIT		0x1050A000
+/* (1<<5)|(1<<13)|(1<<15)|(1<<20)|(1<<22)|(1<<28) */
+#define TC_STATUS_LOGGING_BIT		0x1050A020
 //#define TC_STATUS_MCU_FAULT		0x60000000	/* (1<<30)| (1<<29) */
 
 #define STATUS_NORMAL_MASK			(((u64)IC_STATUS_NORMAL_MASK << 32) | (u64)TC_STATUS_NORMAL_MASK)

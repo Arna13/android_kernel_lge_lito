@@ -5,16 +5,6 @@
 #define FRONTCOVER_CLOSE 1
 #define BACKCOVER_CLOSE 5
 #endif
-
-#if IS_ENABLED(CONFIG_LGE_SWIVEL_HALLIC_SUPPORT)
-enum {
-	SWIVEL_HALF_OPENED,
-	SWIVEL_CLOSED,
-	SWIVEL_OPENED,
-	SWIVEL_MAX,
-};
-#endif
-
 struct hallic_dev {
 	const char	*name;
 	struct device	*dev;

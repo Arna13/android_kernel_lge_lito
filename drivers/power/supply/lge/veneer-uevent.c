@@ -23,9 +23,7 @@ static struct filter {
 	{ "POWER_SUPPLY_VOLTAGE_VPH",		10000,		24 }, // usb       / VPH(uV)
 	{ "POWER_SUPPLY_CP_DIE_TEMP",		10,		24 }, // CP        / temp(x)
 	{ "POWER_SUPPLY_CP_ISNS",		50000,		20 }, // CP        / ISNS(uV)
-#ifdef CONFIG_LGE_PM_CCD
 	{ "POWER_SUPPLY_FORCE_UPDATE",		1,		25 }, // force update       / toggle
-#endif
 };
 
 static struct score {

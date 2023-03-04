@@ -16,7 +16,7 @@
 		pinctrl-0 = <&et713_reset_reset>;
 		pinctrl-1 = <&et713_reset_active>;
 		pinctrl-2 = <&et713_irq_active>;
-		status = "ok";
+		status = "disabled";
 	};
 
 	fingerprint_sensor_vdd: gpio-regulator@f {
@@ -27,7 +27,7 @@
 		regulator-max-microvolt = <3300000>;
 		regulator-enable-ramp-delay = <135>; // TBD
 		enable-active-high;
-		gpio = <&tlmm 145 0x00>;
+		//gpio = <&tlmm 145 0x00>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&fingerprint_sensor_ldo_gpio>;
 		vin-supply = <&pm8150a_bob>;
@@ -77,14 +77,14 @@
 
 	fingerprint_sensor_ldo_gpio: fingerprint_sensor_ldo_gpio {
 		mux {
-			pins = "gpio145";
-			function = "gpio";
+		//	pins = "gpio145";
+		//	function = "gpio";
 		};
 		config {
-			pins = "gpio145";
-			drive-strength = <2>;
-			bias-disable;
-			output-high;
+		//	pins = "gpio145";
+		//	drive-strength = <2>;
+		//	bias-disable;
+		//	output-high;
 		};
 	};
 };

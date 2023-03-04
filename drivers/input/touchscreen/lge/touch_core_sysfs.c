@@ -24,11 +24,6 @@
 #if defined(CONFIG_SECURE_TOUCH)
 #include <touch_i2c.h>
 #endif
-#if defined(CONFIG_LGE_TOUCH_DEX)
-#include <linux/syscalls.h>
-#include <linux/file.h>
-#include <linux/kernel.h>
-#endif
 #define TOUCH_SHOW(ret, buf, fmt, args...) \
 	(ret += snprintf(buf + ret, PAGE_SIZE - ret, fmt, ##args))
 
@@ -37,7 +32,6 @@ static char incoming_call_str[7][15] = {"IDLE", "RINGING", "OFFHOOK", "CDMA_RING
 static char mfts_str[5][8] = {"NONE", "FOLDER", "FLAT", "CURVED", "DS_FLAT"};
 
 int ignore_compared_event = 0;
-extern void touch_sub_control_irq(int on_off);
 
 static ssize_t show_platform_data(struct device *dev, char *buf)
 {
@@ -851,13 +845,6 @@ static ssize_t store_swipe_tool(struct device *dev,
 				&& width == 0 && height == 0) {
 			TOUCH_I("%s : Values are not changed.\n", __func__);
 		} else {
-			if (width < height) { //AOD horizontal mode for wing
-				ts->aod_mode = AOD_HORIZONTAL_MODE;
-			} else { //AOD vertical mode
-				ts->aod_mode = AOD_VERTICAL_MODE;
-			}
-			TOUCH_I("aod_mode = %d\n", ts->aod_mode);
-
 			end_x = start_x + width - 1;
 			end_y = start_y + height - 1;
 
@@ -1255,13 +1242,6 @@ static ssize_t store_secure_touch_enable(struct device *dev,
 				} else if (!strcmp(token, "lge")) {
 					touch_report_all_event(ts);
 					touch_interrupt_control(ts->dev, INTERRUPT_DISABLE);
-					mutex_lock(&ts->lock);
-					ts->driver->power(dev,POWER_HW_RESET_SYNC);
-					TOUCH_I("secure touch reset\n");
-					mutex_unlock(&ts->lock);
-				} else if (!strncmp(token, "focaltech", 9)) {
-					TOUCH_I("%s secure touch end\n", token);
-					touch_interrupt_control(ts->dev, INTERRUPT_DISABLE);
 					mod_delayed_work(ts->wq, &ts->init_work, 0);
 				}
 			}
@@ -1270,9 +1250,6 @@ static ssize_t store_secure_touch_enable(struct device *dev,
 		complete(&ts->st_powerdown);
 #if defined(CONFIG_TRUSTONIC_TRUSTED_UI)
 		complete(&ts->st_irq_received);
-#endif
-#if defined(CONFIG_LGE_TOUCH_CORE_SUB)
-		touch_sub_control_irq(0);
 #endif
 
 		break;
@@ -1283,9 +1260,6 @@ static ssize_t store_secure_touch_enable(struct device *dev,
 			break;
 		}
 
-#if defined(CONFIG_LGE_TOUCH_CORE_SUB)
-		touch_sub_control_irq(1);
-#endif
 		touch_interrupt_control(ts->dev, INTERRUPT_DISABLE);
 		touch_msleep(50);
 		synchronize_irq(ts->irq);
@@ -1482,35 +1456,16 @@ static ssize_t store_touch_dex_mode(struct device *dev,
 	int height = 0;
 	int end_x = 0;
 	int end_y = 0;
-	int fd = 0;
-	char *fname = NULL;
 
 	TOUCH_TRACE();
+
 	if (sscanf(buf, "%d %d %d %d %d %d", &enable, &offset_y, &start_x,
 				&start_y, &width, &height) <= 0)
 		return count;
 
 	TOUCH_I("%s: enable = %d, offset_y = %d, start_x = %d, start_y = %d, width = %d, height = %d\n",
-			__func__, enable, offset_y, start_x, start_y, width, height);
-
-	if (offset_y == 1) { // if offset_y = 0, we use dex mode for main panel, if offset_y = 1, we use dex mode for sub panel
-		mm_segment_t old_fs = get_fs();
-		set_fs(KERNEL_DS);
-
-		/* redirect path to sub touch dex mode */
-		fname = "/sys/devices/virtual/input/lge_sub_touch/touch_dex_mode";
-		fd = ksys_open(fname, O_WRONLY, 0666);
-		if (fd >= 0) {
-			TOUCH_I("sub dex touch detected: redirect infos\n");
-			ksys_write(fd, buf, strlen(buf));
-			ksys_close(fd);
-			set_fs(old_fs);
-			return count;
-		} else {
-			TOUCH_E("%s : fname is NULL, can not open FILE\n", __func__);
-			set_fs(old_fs);
-		}
-	}
+			__func__, enable, offset_y, start_x,
+			start_y, width, height);
 
 	if ((enable > 1) || (enable < 0)) {
 		TOUCH_E("invalid enable(%d)\n", enable);
@@ -1636,42 +1591,6 @@ static ssize_t write_app_fw_upgrade(struct file *filp,
 	return ret;
 }
 #endif
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-static ssize_t show_encryption_coordi(struct device *dev, char *buf)
-{
-	struct touch_core_data *ts = to_touch_core(dev);
-	int ret = 0;
-
-	TOUCH_TRACE();
-
-	ret += snprintf(buf + ret, PAGE_SIZE, "%s: encryption_coordi(%s)\n", __func__,
-			ts->role.encryption_coordi? "enable" : "disable", ts->role.encryption_coordi);
-
-	TOUCH_I("%s: encryption_coordi(%s)\n", __func__, ts->role.encryption_coordi? "enable" : "disable");
-
-	return ret;
-}
-static ssize_t store_encryption_coordi(struct device *dev,
-		const char *buf, size_t count)
-{
-	struct touch_core_data *ts = to_touch_core(dev);
-	int value = 0;
-
-	TOUCH_TRACE();
-	if (sscanf(buf, "%d", &value) <= 0)
-		return count;
-
-	if (value == 0)
-		ts->role.encryption_coordi = false;
-	else if (value == 1)
-		ts->role.encryption_coordi = true;
-
-	TOUCH_I("%s: encryption_coordi(%s)\n", __func__, ts->role.encryption_coordi?
-			"enable" : "disable", ts->role.encryption_coordi);
-
-	return count;
-}
-#endif
 static TOUCH_ATTR(platform_data, show_platform_data, NULL);
 static TOUCH_ATTR(fw_upgrade, show_upgrade, store_upgrade);
 static TOUCH_ATTR(lpwg_data, show_lpwg_data, store_lpwg_data);
@@ -1709,9 +1628,6 @@ static TOUCH_ATTR(secure_touch_devinfo, show_secure_touch_devinfo, NULL);
 static TOUCH_ATTR(ignore_event, show_ignore_event, store_ignore_event);
 #if defined(CONFIG_LGE_TOUCH_DEX)
 static TOUCH_ATTR(touch_dex_mode, show_touch_dex_mode, store_touch_dex_mode);
-#endif
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-static TOUCH_ATTR(encryption_coordi, show_encryption_coordi, store_encryption_coordi);
 #endif
 /*
 static TOUCH_ATTR(module_test, show_module_touch_test, store_module_touch_test);
@@ -1758,9 +1674,6 @@ static struct attribute *touch_attribute_list[] = {
 	&touch_attr_ignore_event.attr,
 #if defined(CONFIG_LGE_TOUCH_DEX)
 	&touch_attr_touch_dex_mode.attr,
-#endif
-#if defined(CONFIG_LGE_TOUCH_ENCRYPTION)
-	&touch_attr_encryption_coordi.attr,
 #endif
 //	&touch_attr_module_test.attr,
 	NULL,

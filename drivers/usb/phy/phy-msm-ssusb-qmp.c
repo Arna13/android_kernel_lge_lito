@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -110,12 +110,12 @@ struct qmp_reg_val {
 };
 
 #ifdef CONFIG_LGE_USB_GADGET
-/* reg for tuning Tx swing(TX_DRV_LVL) */
-#define QSERDES_TXA_TX_DRV_LVL		0x12E8
-#define QSERDES_TXB_TX_DRV_LVL		0x16E8
+/* reg for tuning Tx swing */
+#define QSERDES_TXA_TX_DRV_LVL		0x1214
+#define QSERDES_TXB_TX_DRV_LVL		0x1614
 /* reg for tuning Tx precursor emphasis */
-#define QSERDES_TXA_PRE_EMPH		0x22E8
-#define QSERDES_TXB_PRE_EMPH		0x26E8
+#define QSERDES_TXA_PRE_EMPH		0x1308
+#define QSERDES_TXB_PRE_EMPH		0x1708
 /* reg for tuning Tx postcursor emphasis */
 #define QSERDES_TXA_TX_EMP_POST1_LVL	0x120C
 #define QSERDES_TXB_TX_EMP_POST1_LVL	0x160C
@@ -559,11 +559,6 @@ static int configure_phy_regs(struct usb_phy *uphy,
                         writel_relaxed(rxb_equ_tune4 | phy->rx_b_equ_gain2,
                                         phy->base + RXB_RX_EQU_ADAPTOR_CNTRL4);
         }
-
-	pr_debug("[BSP-USB] QSERDES_TXA_TX_DRV_LVL: 0x%02X\n", readl_relaxed(phy->base + QSERDES_TXA_TX_DRV_LVL) & 0xff);
-	pr_debug("[BSP-USB] QSERDES_TXA_PRE_EMPH: 0x%02X\n", readl_relaxed(phy->base + QSERDES_TXA_PRE_EMPH) & 0xff);
-	pr_debug("[BSP-USB] QSERDES_TXA_TX_EMP_POST1_LVL: 0x%02X\n", readl_relaxed(phy->base + QSERDES_TXA_TX_EMP_POST1_LVL) & 0xff);
-
 #endif
 
 	return 0;
@@ -713,7 +708,7 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 	ret = configure_phy_regs(uphy, reg);
 	if (ret) {
 		dev_err(uphy->dev, "Failed the main PHY configuration\n");
-		goto fail;
+		return ret;
 	}
 
 	/* perform software reset of PHY common logic */
@@ -744,8 +739,7 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 		dev_err(uphy->dev, "USB3_PHY_PCS_STATUS:%x\n",
 				readl_relaxed(phy->base +
 					phy->phy_reg[USB3_PHY_PCS_STATUS]));
-		ret = -EBUSY;
-		goto fail;
+		return -EBUSY;
 	};
 
 #ifdef CONFIG_LGE_USB_GADGET
@@ -783,14 +777,6 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 #endif
 
 	return 0;
-fail:
-	phy->in_suspend = true;
-	writel_relaxed(0x00,
-		phy->base + phy->phy_reg[USB3_PHY_POWER_DOWN_CONTROL]);
-	msm_ssphy_qmp_enable_clks(phy, false);
-	msm_ssusb_qmp_ldo_enable(phy, 0);
-
-	return ret;
 }
 
 static int msm_ssphy_qmp_dp_combo_reset(struct usb_phy *uphy)

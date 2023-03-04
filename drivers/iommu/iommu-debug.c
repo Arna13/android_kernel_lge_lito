@@ -78,12 +78,8 @@ static const char *iommu_debug_attr_to_string(enum iommu_attr attr)
 		return "DOMAIN_ATTR_FAST";
 	case DOMAIN_ATTR_EARLY_MAP:
 		return "DOMAIN_ATTR_EARLY_MAP";
-	case DOMAIN_ATTR_FAULT_MODEL_NO_CFRE:
-		return "DOMAIN_ATTR_FAULT_MODEL_NO_CFRE";
-	case DOMAIN_ATTR_FAULT_MODEL_NO_STALL:
-		return "DOMAIN_ATTR_FAULT_MODEL_NO_STALL";
-	case DOMAIN_ATTR_FAULT_MODEL_HUPCF:
-		return "DOMAIN_ATTR_FAULT_MODEL_HUPCF";
+	case DOMAIN_ATTR_CB_STALL_DISABLE:
+		return "DOMAIN_ATTR_CB_STALL_DISABLE";
 	default:
 		return "Unknown attr!";
 	}
@@ -175,25 +171,21 @@ static void iommu_debug_destroy_phoney_sg_table(struct device *dev,
 struct iommu_debug_attr {
 	unsigned long dma_type;
 	int vmid;
-	struct iommu_domain_geometry geometry;
 };
 
 static struct iommu_debug_attr std_attr = {
 	.dma_type = 0,
 	.vmid = 0,
-	.geometry = {0, 0, 0},
 };
 
 static struct iommu_debug_attr fastmap_attr = {
 	.dma_type = DOMAIN_ATTR_FAST,
 	.vmid = 0,
-	.geometry = {0, (dma_addr_t)(SZ_1G * 4ULL - 1), 0},
 };
 
 static struct iommu_debug_attr secure_attr = {
 	.dma_type = 0,
 	.vmid = VMID_CP_PIXEL,
-	.geometry = {0, 0, 0},
 };
 
 static int iommu_debug_set_attrs(struct iommu_debug_device *ddev,
@@ -211,10 +203,6 @@ static int iommu_debug_set_attrs(struct iommu_debug_device *ddev,
 	if (attrs->vmid != 0)
 		iommu_domain_set_attr(domain,
 			DOMAIN_ATTR_SECURE_VMID, &attrs->vmid);
-
-	if (attrs->geometry.aperture_end || attrs->geometry.aperture_start)
-		iommu_domain_set_attr(domain,
-			DOMAIN_ATTR_GEOMETRY, &attrs->geometry);
 
 	return 0;
 }
@@ -888,8 +876,7 @@ out:
 static int __check_mapping(struct device *dev, struct iommu_domain *domain,
 			   dma_addr_t iova, phys_addr_t expected)
 {
-	phys_addr_t res = iommu_iova_to_phys_hard(domain, iova,
-						  IOMMU_TRANS_DEFAULT);
+	phys_addr_t res = iommu_iova_to_phys_hard(domain, iova);
 	phys_addr_t res2 = iommu_iova_to_phys(domain, iova);
 
 	WARN(res != res2, "hard/soft iova_to_phys fns don't agree...");
@@ -1114,8 +1101,7 @@ static int __functional_dma_api_basic_test(struct device *dev,
 		memset(data, 0xa5, size);
 		iova = dma_map_single(dev, data, size, DMA_TO_DEVICE);
 		pa = iommu_iova_to_phys(domain, iova);
-		pa2 = iommu_iova_to_phys_hard(domain, iova,
-					      IOMMU_TRANS_DEFAULT);
+		pa2 = iommu_iova_to_phys_hard(domain, iova);
 		if (pa != pa2) {
 			dev_err_ratelimited(dev,
 				"iova_to_phys doesn't match iova_to_phys_hard: %pa != %pa\n",
@@ -1188,8 +1174,7 @@ static int __functional_dma_api_map_sg_test(struct device *dev,
 		for_each_sg(table.sgl, sg, count, i) {
 			iova = sg_dma_address(sg);
 			pa = iommu_iova_to_phys(domain, iova);
-			pa2 = iommu_iova_to_phys_hard(domain, iova,
-						      IOMMU_TRANS_DEFAULT);
+			pa2 = iommu_iova_to_phys_hard(domain, iova);
 			if (pa != pa2) {
 				dev_err_ratelimited(dev,
 					"iova_to_phys doesn't match iova_to_phys_hard: %pa != %pa\n",
@@ -1200,8 +1185,7 @@ static int __functional_dma_api_map_sg_test(struct device *dev,
 			/* check mappings at end of buffer */
 			iova += sg_dma_len(sg) - 1;
 			pa = iommu_iova_to_phys(domain, iova);
-			pa2 = iommu_iova_to_phys_hard(domain, iova,
-						      IOMMU_TRANS_DEFAULT);
+			pa2 = iommu_iova_to_phys_hard(domain, iova);
 			if (pa != pa2) {
 				dev_err_ratelimited(dev,
 					"iova_to_phys doesn't match iova_to_phys_hard: %pa != %pa\n",
@@ -1402,13 +1386,9 @@ static ssize_t iommu_debug_test_virt_addr_read(struct file *file,
 
 	memset(buf, 0, buf_len);
 
-	if (IS_ERR_OR_NULL(test_virt_addr))
-		test_virt_addr = kzalloc(SZ_1M, GFP_KERNEL);
-
-	if (!test_virt_addr) {
-		test_virt_addr = ERR_PTR(-ENOMEM);
+	if (!test_virt_addr)
 		strlcpy(buf, "FAIL\n", buf_len);
-	} else
+	else
 		snprintf(buf, buf_len, "0x%pK\n", test_virt_addr);
 
 	return simple_read_from_buffer(ubuf, count, offset, buf, strlen(buf));
@@ -1541,8 +1521,7 @@ static ssize_t iommu_debug_atos_read(struct file *file, char __user *ubuf,
 
 	memset(buf, 0, 100);
 
-	phys = iommu_iova_to_phys_hard(ddev->domain, ddev->iova,
-				       IOMMU_TRANS_DEFAULT);
+	phys = iommu_iova_to_phys_hard(ddev->domain, ddev->iova);
 	if (!phys) {
 		strlcpy(buf, "FAIL\n", 100);
 		phys = iommu_iova_to_phys(ddev->domain, ddev->iova);
@@ -1585,7 +1564,7 @@ static ssize_t iommu_debug_dma_atos_read(struct file *file, char __user *ubuf,
 	memset(buf, 0, sizeof(buf));
 
 	phys = iommu_iova_to_phys_hard(ddev->domain,
-			ddev->iova, IOMMU_TRANS_DEFAULT);
+			ddev->iova);
 	if (!phys)
 		strlcpy(buf, "FAIL\n", sizeof(buf));
 	else
@@ -1739,12 +1718,6 @@ static ssize_t iommu_debug_dma_map_write(struct file *file,
 	if (kstrtouint(comma2 + 1, 0, &attr))
 		goto invalid_format;
 
-	if (IS_ERR(test_virt_addr))
-		goto allocation_failure;
-
-	if (!test_virt_addr)
-		goto missing_allocation;
-
 	if (v_addr < test_virt_addr || v_addr + size > test_virt_addr + SZ_1M)
 		goto invalid_addr;
 
@@ -1791,14 +1764,6 @@ invalid_format:
 
 invalid_addr:
 	pr_err_ratelimited("Invalid addr given! Address should be within 1MB size from start addr returned by doing 'cat test_virt_addr'.\n");
-	return retval;
-
-allocation_failure:
-	pr_err_ratelimited("Allocation of test_virt_addr failed.\n");
-	return -ENOMEM;
-
-missing_allocation:
-	pr_err_ratelimited("Please attempt to do 'cat test_virt_addr'.\n");
 	return retval;
 }
 
@@ -2308,6 +2273,11 @@ static int iommu_debug_init_tests(void)
 		pr_err_ratelimited("Couldn't create iommu/tests debugfs directory\n");
 		return -ENODEV;
 	}
+
+	test_virt_addr = kzalloc(SZ_1M, GFP_KERNEL);
+
+	if (!test_virt_addr)
+		return -ENOMEM;
 
 	return bus_for_each_dev(&platform_bus_type, NULL, NULL,
 				snarf_iommu_devices);

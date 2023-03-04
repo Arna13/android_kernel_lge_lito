@@ -27,3 +27,16 @@
         interrupt-names = "nfc_irq";
     };
 };
+
+// spi
+&qupv3_se1_spi {
+    status = "ok";
+
+    p73@0 {
+        compatible = "nxp,p73";
+        reg = <0>;
+        status = "ok";
+        spi-max-frequency = <50000000>;
+    };
+};
+

@@ -645,25 +645,12 @@ config CHARGER_CROS_USBPD
 	  what is connected to USB PD ports from the EC and converts
 	  that into power_supply properties.
 
-config USE_WIRELESS_CHARGING
-	tristate "IDT P9222 charger diver"
-	default y if CHARGER_IDTP9222 || CHARGER_IDTP9222_V2
-	help
-	  Say Y here to use wireless charging for device
-
 config CHARGER_IDTP9222
 	tristate "IDT P9222 charger diver"
 	default n
 	depends on I2C && GPIOLIB
 	help
 	  Say Y to enable support for the IDT P9222 wireless charger.
-
-config CHARGER_IDTP9222_V2
-	tristate "IDT P9222-2 charger diver"
-	default n
-	depends on I2C && GPIOLIB
-	help
-	  Say Y to enable support for the IDT P9222-2 wireless charger.
 
 source "drivers/power/supply/qcom/Kconfig"
 source "drivers/power/supply/lge/Kconfig"

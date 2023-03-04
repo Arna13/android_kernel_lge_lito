@@ -35,7 +35,6 @@ static struct lge_prm prm = {
 	.ds2_connect_mode  = LGE_PRM_DS2_DISCONNECTION,
 	.hallic_mode  = LGE_PRM_HALLIC_OFF,
 	.ds_state  = LGE_PRM_DS_CONNECTION_OFF,
-	.swivel_state  = LGE_PRM_SWIVEL_CLOSE,
 };
 
 static void lge_prm_lock(void)
@@ -79,10 +78,8 @@ void lge_prm_display_set_event(enum display_event event, int value)
 		prm.ds2_connect_mode = value;
 		lge_prm_unlock();
 
-		if (prm.enable_mask & LGE_PRM_INIT_DD) {
+		if (prm.enable_mask & LGE_PRM_INIT_DD)
 			lge_dd_state_notify();
-			lge_dd_connect_notify();
-		}
 		break;
 	case LGE_PRM_DISPLAY_EVENT_HALLIC_STATE:
 		lge_prm_lock();
@@ -96,14 +93,6 @@ void lge_prm_display_set_event(enum display_event event, int value)
 		lge_prm_lock();
 		prm.ds_state = value;
 		lge_prm_unlock();
-		break;
-	case LGE_PRM_DISPLAY_EVENT_SWIVEL_STATE:
-		lge_prm_lock();
-		prm.swivel_state = value;
-		lge_prm_unlock();
-
-		if (prm.enable_mask & LGE_PRM_INIT_SWIVEL)
-			lge_dd_state_notify();
 		break;
 	case LGE_PRM_DISPLAY_EVENT_MAX:
 	default :
@@ -134,9 +123,6 @@ int lge_prm_get_info(int info)
 	case LGE_PRM_INFO_DS_STATE:
 		data = prm.ds_state;
 		break;
-	case LGE_PRM_INFO_SWIVEL_STATE:
-		data = prm.swivel_state;
-		break;
 	case LGE_PRM_INFO_VFPS_ENABLED:
 		data = !!(prm.enable_mask & LGE_PRM_INIT_VFPS);
 		break;
@@ -151,9 +137,6 @@ int lge_prm_get_info(int info)
 		break;
 	case LGE_PRM_INFO_DD_ENABLED:
 		data = !!(prm.enable_mask & LGE_PRM_INIT_DD);
-		break;
-	case LGE_PRM_INFO_SWIVEL_ENABLED:
-		data = !!(prm.enable_mask & LGE_PRM_INIT_SWIVEL);
 		break;
 	default:
 		pr_err(PRM_TAG "Unknown request of prm\n");
@@ -218,9 +201,6 @@ static int lge_prm_probe(struct platform_device *pdev)
 
 	if (of_property_read_bool(node, "lge,dd-enabled"))
 		prm.enable_mask |= LGE_PRM_INIT_DD;
-
-	if (of_property_read_bool(node, "lge,swivel-enabled"))
-		prm.enable_mask |= LGE_PRM_INIT_SWIVEL;
 
 	/* Masking init_mask */
 	prm.init_mask &= prm.enable_mask;

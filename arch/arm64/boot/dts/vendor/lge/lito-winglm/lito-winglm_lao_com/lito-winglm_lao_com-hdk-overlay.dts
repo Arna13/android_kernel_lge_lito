@@ -7,9 +7,9 @@
 #include "../lito-camera/lito-winglm-camera_hdk.dtsi"
 #include "../lito-winglm_common/lito-winglm_common-fingerprint_hdk.dtsi"
 #include "../lito-winglm_common/lito-winglm_common-usb_hdk.dtsi"
+#include "../lito-winglm_common/lito-winglm_common-coverhallic_hdk.dtsi"
 #include "lito-winglm_lao_com-sound.dtsi"
 #include "../lito-winglm_common/lito-winglm_common-panel_hdk.dtsi"
-#include "lito-winglm_lao_com-touch_hdk.dtsi"
 
 / {
 	model = "LG Electronics, Winglm, HDK";

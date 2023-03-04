@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/atomic.h>
@@ -336,10 +336,10 @@ int rpmh_write(const struct device *dev, enum rpmh_state state,
 
 	ret = wait_for_completion_timeout(&compl, RPMH_TIMEOUT_MS);
 	if (!ret) {
-		rpmh_rsc_debug(ctrlr_to_drv(ctrlr), &compl);
 #ifdef CONFIG_LGE_HANDLE_PANIC_RPMH_TIMEOUT
 		pr_err("RPMH Timeout : %s\n", dev->kobj.name);
 #endif
+		rpmh_rsc_debug(ctrlr_to_drv(ctrlr));
 		return -ETIMEDOUT;
 	}
 
@@ -483,7 +483,7 @@ int rpmh_write_batch(const struct device *dev, enum rpmh_state state,
 			 * the completion that we're going to free once
 			 * we've returned from this function.
 			 */
-			rpmh_rsc_debug(ctrlr_to_drv(ctrlr), &compls[i]);
+			rpmh_rsc_debug(ctrlr_to_drv(ctrlr));
 			ret = -ETIMEDOUT;
 			goto exit;
 		}

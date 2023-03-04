@@ -15,12 +15,10 @@
 
 #define FEATURE_SDCARD_ENCRYPTION
 #define MAX_MEDIA_EXT_LENGTH 1024
-#define PATH_NAME_MAX_LENGTH 1024
 #define ANDROID_SYSTEM_SERVER_UID KUIDT_INIT(1000)
 
 extern int ecryptfs_media_file_search(const unsigned char *filename);
 extern int ecryptfs_asec_file_search(const unsigned char *filename);
 extern long set_media_ext(const char *media_ext_list);
-extern int ecryptfs_should_exclude_encrypt(struct dentry *ecryptfs_dentry);
 
 #endif /* #ifndef SDCARD_ENCRYPT_MGR_H*/

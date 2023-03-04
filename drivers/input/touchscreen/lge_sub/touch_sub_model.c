@@ -51,7 +51,6 @@ int touch_sub_get_dts_base(struct touch_sub_core_data *ts)
 	PROPERTY_BOOL(np, "hide_coordinate", ts->role.hide_coordinate);
 	PROPERTY_BOOL(np, "use_film_status", ts->role.use_film_status);
 	PROPERTY_BOOL(np, "use_activepen_status", ts->role.use_active_pen_status);
-	PROPERTY_BOOL(np, "use_dex_mode", ts->role.use_dex_mode);
 
 	/* Power */
 	PROPERTY_GPIO(np, "vcl-gpio", ts->vcl_pin);

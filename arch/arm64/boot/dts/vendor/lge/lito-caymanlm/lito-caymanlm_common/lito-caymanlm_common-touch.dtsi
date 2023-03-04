@@ -104,8 +104,8 @@
 		use_dex_mode = <1>;
 
 		/* firmware */
-		fw_image = "touch/caymanlm/B3W68CAYMAN_3_41.img",
-			   "touch/caymanlm/B3W68DS3_0_34.img";
+		fw_image = "touch/caymanlm/B3W68CAYMAN_0_29.img",
+			   "touch/caymanlm/B3W68DS3_0_28.img";
 
 		panel_spec = "touch/caymanlm/cayman_sw42902_limit.txt";
 		panel_spec_mfts_folder = "touch/caymanlm/cayman_sw42902_limit.txt";

@@ -87,20 +87,12 @@ failed:
 
 bool wa_command_icl_override(/*@Nonnull*/ struct smb_charger* chg)
 {
-	char buff [16] = { 0, };
-	int fastpl = 0;
-
-	if (unified_nodes_show("support_fastpl", buff)
-			&& sscanf(buff, "%d", &fastpl) && fastpl == 1){
-		pr_wa("fastpl set %d return wa_command_icl_override\n", fastpl);
-		return false;
-	}
 	if (smblib_masked_write(chg, USBIN_CMD_ICL_OVERRIDE_REG,
 			ICL_OVERRIDE_BIT, ICL_OVERRIDE_BIT) < 0) {
 		pr_wa("Couldn't icl override\n");
 		return false;
 	}
-	pr_wa("success wa_command_icl_override\n");
+
 	return true;
 }
 
@@ -549,7 +541,7 @@ void wa_charging_without_cc_trigger(struct smb_charger *chg)
 	if (unified_nodes_show("support_fastpl", buff))
 		sscanf(buff, "%d", &fastpl);
 
-	if (vbus && wa_charging_without_cc_required(chg) && (fastpl != 1)) {
+	if (vbus && wa_charging_without_cc_required(chg) && !fastpl) {
 		if (delayed_work_pending(&ext_chg->wa_charging_without_cc_dwork)) {
 			pr_wa(" Cancel the pended trying apsd . . . vbus=%d, fastpl=%d\n", vbus, fastpl);
 			cancel_delayed_work(&ext_chg->wa_charging_without_cc_dwork);
@@ -1152,17 +1144,11 @@ static void wa_clear_pr_without_charger_init(struct smb_charger* chg)
 void wa_clear_dc_reverse_volt_trigger(bool enable)
 {
 	struct smb_charger* chg = wa_helper_chg();
-	struct ext_smb_charger *ext_chg;
+	struct ext_smb_charger *ext_chg = chg->ext_chg;
 	u8 status;
 
 	if (!chg) {
 		pr_wa("'chg' is not ready\n");
-		return;
-	}
-
-	ext_chg = chg->ext_chg;
-	if (!ext_chg) {
-		pr_wa("'ext_chg' is not ready\n");
 		return;
 	}
 
@@ -1212,11 +1198,6 @@ static void wa_dcin_rerun_aicl_func(struct work_struct *work)
 	rc = smblib_get_charge_param(chg, &chg->param.dc_icl, &icl);
 	if (rc < 0) {
 		pr_wa("Couldn't get dc_icl value, rc=%d\n", rc);
-		return;
-	}
-
-	if (!chg->dc_icl_votable) {
-		pr_wa("Couldn't get dc_icl_votable\n");
 		return;
 	}
 
@@ -1274,42 +1255,37 @@ void wa_dcin_rerun_aicl_init(struct smb_charger* chg)
 // LGE Workaround : Recovery vashdn during wireless charging
 ////////////////////////////////////////////////////////////////////////////
 
-#define VASHDN_DELAY_MS		5000
+#define VASHDN_DELAY_MS		3000
 static void wa_recovery_vashdn_wireless_func(struct work_struct *work)
 {
 	struct ext_smb_charger *ext_chg = container_of(work, struct ext_smb_charger,
 						wa_recovery_vashdn_wireless_dwork.work);
 	struct smb_charger *chg = ext_chg->chg;
+	struct power_supply* wireless_psy = power_supply_get_by_name("wireless");
 	union power_supply_propval val = { .intval = 0, };
-	int dc_present, dc_online;
-	bool dc_vashdn, dc_pause;
 	u8 stat;
 
-	if (!chg) {
-		pr_wa("'chg' is not ready\n");
+	if (!wireless_psy) {
+		pr_wa("'wireless_psy' is not ready\n");
 		return;
 	}
 
-	if (!chg->wls_psy) {
-		chg->wls_psy = power_supply_get_by_name("wireless");
-		if (!chg->wls_psy) {
-			pr_wa("'wls_psy' is no device\n");
-			return;
-		}
-	}
-
-	dc_present = !smblib_get_prop_dc_present(chg, &val) ? val.intval : 0;
-	dc_online = !smblib_get_prop_dc_online(chg, &val) ? val.intval : 0;
-	dc_vashdn = !smblib_read(chg, DCIN_BASE + INT_RT_STS_OFFSET, &stat)
+	if (chg) {
+		int dc_present = !smblib_get_prop_dc_present(chg, &val) ? val.intval : 0;
+		int dc_online = !smblib_get_prop_dc_online(chg, &val) ? val.intval : 0;
+		bool dc_vashdn = !smblib_read(chg, DCIN_BASE + INT_RT_STS_OFFSET, &stat)
 			? (stat & DCIN_VASHDN_RT_STS) : 0;
-	dc_pause = !smblib_read(chg, BATTERY_CHARGER_STATUS_1_REG, &stat)
+		bool dc_pause = !smblib_read(chg, BATTERY_CHARGER_STATUS_1_REG, &stat)
 			? (stat & PAUSE_CHARGE) : 0;
 
-	if (dc_present && !dc_online && dc_vashdn && dc_pause) {
-		pr_wa("detection Vashdn wireless charging stop!\n");
-		power_supply_set_property(chg->wls_psy,
-			POWER_SUPPLY_PROP_DC_RESET, &val);
+		if (dc_present && !dc_online && dc_vashdn && dc_pause) {
+			pr_wa("detection Vashdn wireless charging stop!\n");
+			val.intval = 2;
+			power_supply_set_property(wireless_psy,
+				POWER_SUPPLY_PROP_DEBUG_BATTERY, &val);
+		}
 	}
+	power_supply_put(wireless_psy);
 }
 
 void wa_recovery_vashdn_wireless_trigger(struct smb_charger* chg)
@@ -1341,61 +1317,6 @@ void wa_recovery_vashdn_wireless_init(struct smb_charger* chg)
 
 	INIT_DELAYED_WORK(&ext_chg->wa_recovery_vashdn_wireless_dwork,
 			wa_recovery_vashdn_wireless_func);
-}
-
-
-////////////////////////////////////////////////////////////////////////////
-// LGE Workaround : Avoid FOD status by certain wireless charger
-////////////////////////////////////////////////////////////////////////////
-
-void wa_avoid_fod_status_trigger(struct smb_charger* chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-	union power_supply_propval val = { .intval = 0, };
-	int wlc_online, wlc_suspend, wlc_full;
-
-	if (!ext_chg->enable_avoid_fod_status)
-		return;
-
-	if (!chg) {
-		pr_wa("'chg' is not ready\n");
-		return;
-	}
-
-	if (!chg->wls_psy) {
-		chg->wls_psy = power_supply_get_by_name("wireless");
-		if (!chg->wls_psy) {
-			pr_wa("'wls_psy' is not ready\n");
-			return;
-		}
-	}
-
-	wlc_online = !power_supply_get_property(chg->wls_psy,
-			POWER_SUPPLY_PROP_PRESENT, &val) ? val.intval : 0;
-	wlc_suspend = get_effective_result(chg->dc_suspend_votable);
-	wlc_full = !power_supply_get_property(chg->wls_psy,
-			POWER_SUPPLY_PROP_CHARGE_DONE, &val) ? val.intval : 0;
-
-	if (wlc_online && wlc_suspend && wlc_full) {
-		pr_wa("Release dcin blocking during EoC!\n");
-		val.intval = 0;
-		power_supply_set_property(chg->wls_psy,
-			POWER_SUPPLY_PROP_CHARGE_DONE, &val);
-	}
-}
-
-void wa_avoid_fod_status_init(struct smb_charger* chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-	struct device_node *node = chg->dev->of_node;
-	struct device_node *dnode =
-		of_find_node_by_name(node, "veneer-workaround");
-
-	ext_chg->enable_avoid_fod_status =
-		of_property_read_bool(dnode, "lge,enable-avoid-fod-status");
-
-	if (!ext_chg->enable_avoid_fod_status)
-		return;
 }
 
 
@@ -1574,77 +1495,39 @@ void wa_retry_ok_to_pd_init(struct smb_charger* chg)
 }
 
 
+#if 0
 ////////////////////////////////////////////////////////////////////////////
-// LGE Workaround : Avoid Inrush current for USB Compliance test
+// LGE Workaround : Supporting USB Compliance test
 ////////////////////////////////////////////////////////////////////////////
 
-#define AVOID_INRUSH_DELAY_MS 100
-#define AVOID_INRUSH_VOTER		"AVOID_INRUSH_VOTER"
-static void wa_avoid_inrush_current_func(struct work_struct *work)
-{
-	struct ext_smb_charger *ext_chg = container_of(work, struct ext_smb_charger,
-						wa_avoid_inrush_current_dwork.work);
-	struct smb_charger *chg = ext_chg->chg;
+#define MICRO_2P5A			2500000
+void wa_set_usb_compliance_mode(bool mode) {
+	struct smb_charger* chg = wa_helper_chg();
+	int rc;
 
-	vote(chg->usb_icl_votable, AVOID_INRUSH_VOTER, false, 0);
+	if (!chg) {
+		pr_wa("'chg' is not ready\n");
+		return;
+	}
+
+	if (mode) {
+		/* set OTG current limit */
+		rc = smblib_set_charge_param(chg, &chg->param.otg_cl, MICRO_2P5A);
+		if (rc < 0) {
+			pr_err("Couldn't set otg current limit rc=%d on compliance mode\n", rc);
+			return;
+		}
+
+	} else {
+		/* set OTG current limit */
+		rc = smblib_set_charge_param(chg, &chg->param.otg_cl, chg->otg_cl_ua);
+		if (rc < 0) {
+			pr_err("Couldn't set otg current limit rc=%d on non-compliance mode\n", rc);
+			return;
+		}
+	}
 }
-
-void wa_avoid_inrush_current_triger(struct smb_charger *chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-
-	if (!ext_chg->enable_avoid_inrush_current)
-		return;
-
-	if(unified_bootmode_fabproc())
-		return;
-
-	schedule_delayed_work(&ext_chg->wa_avoid_inrush_current_dwork,
-			msecs_to_jiffies(AVOID_INRUSH_DELAY_MS));
-	vote(chg->usb_icl_votable, AVOID_INRUSH_VOTER, true, 0);
-}
-
-void wa_avoid_inrush_current_with_compliance_triger(struct smb_charger *chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-
-	if (!ext_chg->enable_avoid_inrush_current)
-		return;
-
-	if(unified_bootmode_fabproc())
-		return;
-
-	vote(chg->usb_icl_votable, AVOID_INRUSH_VOTER,
-		ext_chg->is_usb_compliance_mode, 0);
-}
-
-void wa_avoid_inrush_current_clear(struct smb_charger *chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-
-	if (!ext_chg->enable_avoid_inrush_current)
-		return;
-
-	vote(chg->usb_icl_votable, AVOID_INRUSH_VOTER,
-		ext_chg->is_usb_compliance_mode, 0);
-}
-
-void wa_avoid_inrush_current_init(struct smb_charger* chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-	struct device_node *node = chg->dev->of_node;
-	struct device_node *dnode =
-		of_find_node_by_name(node, "veneer-workaround");
-
-	ext_chg->enable_avoid_inrush_current =
-		of_property_read_bool(dnode, "lge,enable-avoid-inrush-current");
-
-	if (!ext_chg->enable_avoid_inrush_current)
-		return;
-
-	INIT_DELAYED_WORK(&ext_chg->wa_avoid_inrush_current_dwork,
-			wa_avoid_inrush_current_func);
-}
+#endif
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -2053,12 +1936,12 @@ static void wa_faster_try_apsd_init(struct smb_charger *chg)
 #define WA_DEFAULT_VOLTAGE_MV          5000
 #define WA_QC30_STEP_MV                200
 #define FASTER_QC_VOTER        "FASTER_QC_VOTER"
-#define MIN_CP_CURRENT_UA		500000
+#define MIN_CP_CURRENT_UA		2000000
 
 static void wa_faster_try_cp_qc30_trigger(struct smb_charger *chg)
 {
 	struct ext_smb_charger *ext_chg = chg->ext_chg;
-	int vbat = 0, rc = 0, iusb=0, vusb=0;
+	int vbat = 0, rc = 0;
 	union power_supply_propval val = {0, };
 	char buff [16] = { 0, };
 	int  test;
@@ -2087,7 +1970,6 @@ static void wa_faster_try_cp_qc30_trigger(struct smb_charger *chg)
 		if (chg->cp_disable_votable)
 			vote_override(chg->cp_disable_votable, FASTER_QC_VOTER, true, 0);
 		vote_override(chg->fcc_votable, FASTER_QC_VOTER, true, MIN_CP_CURRENT_UA);
-		pr_info("vote fcc 500\n");
 		ext_chg->wa_faster_try_running = true;
 		vbat = !power_supply_get_property(chg->bms_psy,
 			POWER_SUPPLY_PROP_VOLTAGE_NOW, &val) ? val.intval/1000 : -1;
@@ -2103,16 +1985,6 @@ static void wa_faster_try_cp_qc30_trigger(struct smb_charger *chg)
 
 		rc = power_supply_set_property(
 			chg->batt_psy, POWER_SUPPLY_PROP_DP_DM, &val);
-		msleep(50);
-
-		iusb = !power_supply_get_property(chg->usb_psy,
-			POWER_SUPPLY_PROP_INPUT_CURRENT_NOW, &val) ? val.intval/1000 : -1;
-
-		vusb = !power_supply_get_property(chg->usb_psy,
-			POWER_SUPPLY_PROP_VOLTAGE_NOW, &val) ? val.intval/1000 : -1;
-
-		pr_info("Before DP Pulse iusb = %d, vusb = %d\n", iusb, vusb);
-
 	} else {
 		ext_chg->wa_target_cnt = 0;
 	}
@@ -2127,7 +1999,6 @@ static void wa_faster_try_cp_qc30_clear(struct smb_charger *chg)
 
 	ext_chg->wa_faster_try_running = false;
 	vote_override(chg->fcc_votable, FASTER_QC_VOTER, false, 0);
-	pr_info("clear fcc 500\n");
 
 	if (chg->cp_disable_votable)
 		vote_override(chg->cp_disable_votable, FASTER_QC_VOTER, false, 0);
@@ -2242,78 +2113,6 @@ static void wa_disable_cp_with_fake_mode_init(struct smb_charger *chg)
 
 	if (!ext_chg->enable_disable_cp_with_fake_mode)
 		return;
-}
-
-
-////////////////////////////////////////////////////////////////////////////
-// LGE Workaround : Disable hiccup of otg in compliance mode
-////////////////////////////////////////////////////////////////////////////
-
-#define WA_OTG_HICCUP_DELAY_MS	1000
-static void wa_disable_otg_hiccup_func(struct work_struct *work)
-{
-	struct ext_smb_charger *ext_chg = container_of(work, struct ext_smb_charger,
-						wa_disable_otg_hiccup_dwork.work);
-	struct smb_charger *chg = ext_chg->chg;
-
-	if (!chg) {
-		pr_wa("'chg' is not ready\n");
-		return;
-	}
-
-	if (!ext_chg->enable_disable_otg_hiccup)
-		return;
-
-	if (chg->typec_mode != POWER_SUPPLY_TYPEC_NONE) {
-		pr_info("Enable vbus regulator with otg-hiccup\n");
-		override_vbus_regulator_enable(chg->vbus_vreg->rdev);
-	}
-}
-
-void wa_disable_otg_hiccup_trigger(struct smb_charger *chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-
-	if (!ext_chg->enable_disable_otg_hiccup)
-		return;
-
-	if (!ext_chg->is_usb_compliance_mode)
-		return;
-
-	override_vbus_regulator_disable(chg->vbus_vreg->rdev);
-	schedule_delayed_work(&ext_chg->wa_disable_otg_hiccup_dwork,
-		msecs_to_jiffies(WA_OTG_HICCUP_DELAY_MS));
-}
-
-static void wa_disable_otg_hiccup_clear(struct smb_charger *chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-
-	if (!ext_chg->enable_disable_otg_hiccup)
-		return;
-
-	if (!ext_chg->is_usb_compliance_mode)
-		return;
-
-	if (chg->typec_mode == POWER_SUPPLY_TYPEC_NONE)
-		cancel_delayed_work(&ext_chg->wa_disable_otg_hiccup_dwork);
-}
-
-static void wa_disable_otg_hiccup_init(struct smb_charger *chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-	struct device_node *node = chg->dev->of_node;
-	struct device_node *dnode =
-		of_find_node_by_name(node, "veneer-workaround");
-
-	ext_chg->enable_disable_otg_hiccup =
-		of_property_read_bool(dnode, "lge,enable-disable-otg-hiccup");
-
-	if (!ext_chg->enable_disable_otg_hiccup)
-		return;
-
-	INIT_DELAYED_WORK(
-		&ext_chg->wa_disable_otg_hiccup_dwork, wa_disable_otg_hiccup_func);
 }
 
 
@@ -2435,7 +2234,7 @@ static void wa_comp_pwr_cp_qc30_work_func(struct work_struct *work)
 	struct smb_charger *chg = ext_chg->chg;
 	union power_supply_propval val = {0, };
 	int cp_enable = 0, cp_status1 = 0, cp_status2 = 0;
-	int soc = 0, icp_ma = 0, vusb = 0, vbat = 0, fcc = 0, ibat = 0, iavg = 0, in_esr_process = 0;
+	int soc = 0, icp_ma = 0, vusb = 0, vbat = 0, fcc = 0, ibat = 0, iavg = 0;
 	int pulse_count = 0, rc = 0;
 	int cp_ilim = 0, cp_ilim_comp = 0;
 	int delay_ms = WA_COMP_CP_QC30_ILIM_DELAY;
@@ -2468,8 +2267,6 @@ static void wa_comp_pwr_cp_qc30_work_func(struct work_struct *work)
 		POWER_SUPPLY_PROP_CURRENT_NOW, &val) ? val.intval/1000 : -1;
 	iavg = !power_supply_get_property(chg->bms_psy,
 		POWER_SUPPLY_PROP_CURRENT_AVG, &val) ? (val.intval *-1)/1000 : -1;
-	in_esr_process = !power_supply_get_property(chg->bms_psy,
-		POWER_SUPPLY_PROP_UPDATE_NOW, &val) ? (val.intval) : -1;
 	vusb = !power_supply_get_property(chg->usb_psy,
 		POWER_SUPPLY_PROP_VOLTAGE_NOW, &val) ? val.intval/1000 : -1;
 	vbat = !power_supply_get_property(chg->bms_psy,
@@ -2580,13 +2377,14 @@ static void wa_comp_pwr_cp_qc30_work_func(struct work_struct *work)
 
 		cp_ilim_comp = (fcc - ibat) / 2 / CP_ILIM_STEP_MA * CP_ILIM_STEP_UA;
 
-		if (cp_ilim_comp >= CP_ILIM_STEP_UA) {
-			if (in_esr_process) {
-				cp_ilim_comp = 0;
-				pr_info("CP ILIM hold -> cp_ilim=%d, fcc=%d, ibat=%d, iavg=%d, in_esr=%d\n",
-						cp_ilim / 1000, fcc, ibat, iavg, in_esr_process);
-			} else {
+		if (cp_ilim_comp > CP_ILIM_STEP_UA && iavg > 0) {
+			cp_ilim_comp = (fcc - iavg) / 2 / CP_ILIM_STEP_MA * CP_ILIM_STEP_UA;
+			if (cp_ilim_comp > CP_ILIM_STEP_UA) {
 				cp_ilim_comp = CP_ILIM_STEP_UA;
+			} else {
+				cp_ilim_comp = 0;
+				pr_info("CP ILIM hold -> cp_ilim=%d, fcc=%d, ibat=%d, iavg=%d\n",
+						cp_ilim / 1000, fcc, ibat, iavg);
 			}
 		} else if (cp_ilim_comp < -CP_ILIM_STEP_UA)
 			cp_ilim_comp = -CP_ILIM_STEP_UA;
@@ -2599,10 +2397,10 @@ static void wa_comp_pwr_cp_qc30_work_func(struct work_struct *work)
 				POWER_SUPPLY_PROP_INPUT_CURRENT_MAX, &val);
 
 			pr_info("CP ILIM %s -> new cp_ilim=%d, pulse=%d, status=0x%X,%X, "
-					"vbus=%d, vbat=%d, icp=%d, fcc=%d, ibat=%d, iavg=%d, cp_ilim=%d, in_esr=%d\n",
+					"vbus=%d, vbat=%d, icp=%d, fcc=%d, ibat=%d, iavg=%d, cp_ilim=%d\n",
 					cp_ilim_comp > 0 ? "up" : "down",
 					val.intval / 1000, pulse_count, cp_status1, cp_status2,
-					vusb, vbat, icp_ma,	fcc, ibat, iavg, cp_ilim / 1000, in_esr_process);
+					vusb, vbat, icp_ma,	fcc, ibat, iavg, cp_ilim / 1000);
 
 			goto comp_cp_qc30_reschedule;
 		}
@@ -2827,173 +2625,9 @@ static void wa_bad_operation_pps_ta_init(struct smb_charger* chg)
 			wa_bad_operation_pps_ta_work_func);
 }
 
-
-////////////////////////////////////////////////////////////////////////////
-// LGE Workaround : Support concurrency mode between OTG and WLC
-////////////////////////////////////////////////////////////////////////////
-
-bool wa_get_concurrency_mode_for_otg_wlc(void)
-{
-	struct smb_charger* chg = wa_helper_chg();
-	struct ext_smb_charger *ext_chg;
-
-	if (!chg) {
-		pr_wa("'chg' is not ready\n");
-		return false;
-	}
-
-	ext_chg = chg->ext_chg;
-
-	return ext_chg->concurrency_otg_wlc;
-}
-
-static void wa_concurrency_mode_for_otg_wlc(struct smb_charger* chg)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-	struct device_node *node = chg->dev->of_node;
-	struct device_node *dnode =
-		of_find_node_by_name(node, "veneer-workaround");
-	struct pinctrl* gpio_pinctrl;
-	struct pinctrl_state* gpio_state;
-	int rc, gpio = 0;
-
-	if (!dnode)
-		ext_chg->enable_concurrency_otg_wlc = false;
-	else
-		ext_chg->enable_concurrency_otg_wlc =
-			of_property_read_bool(dnode, "lge,enable-concurrency-otg-wlc");
-
-	if (!ext_chg->enable_concurrency_otg_wlc)
-		return;
-
-	gpio_pinctrl = devm_pinctrl_get(chg->dev);
-	if (IS_ERR_OR_NULL(gpio_pinctrl)) {
-		pr_err("Failed to get pinctrl (%ld)\n", PTR_ERR(gpio_pinctrl));
-		goto fail_concurrency_mode;
-	}
-
-	gpio_state = pinctrl_lookup_state(gpio_pinctrl, "wlc_otg_pinctrl");
-	if (IS_ERR_OR_NULL(gpio_state)) {
-		pr_err("pinstate not found, %ld\n", PTR_ERR(gpio_state));
-		goto fail_concurrency_mode;
-	}
-
-	rc = pinctrl_select_state(gpio_pinctrl, gpio_state);
-	if (rc < 0) {
-		pr_err("cannot set pins %d\n", rc);
-		goto fail_concurrency_mode;
-	}
-
-	gpio = of_get_named_gpio(node, "lge,wireless-otg-en", 0);
-	if (!gpio_is_valid(gpio)) {
-		pr_err("Fail to get wireless-otg-en gpio\n");
-		goto fail_concurrency_mode;
-	}
-
-	rc = devm_gpio_request_one(chg->dev, gpio,
-			GPIOF_OUT_INIT_LOW, "wlc_otgen");
-	if (rc) {
-		pr_err("can't request wireless-otg-en gpio %d\n", gpio);
-		goto fail_concurrency_mode;
-	}
-	ext_chg->otg_wlc_en_gpio = gpio_to_desc(gpio);
-
-	gpio = of_get_named_gpio(node, "lge,wireless-otg-on", 0);
-	if (!gpio_is_valid(gpio)) {
-		pr_err("Fail to get wireless-otg-on gpio\n");
-		goto fail_concurrency_mode;
-	}
-
-	rc = devm_gpio_request_one(chg->dev, gpio,
-			GPIOF_OUT_INIT_LOW, "wlc_otgon");
-	if (rc) {
-		pr_err("can't request wireless-otg-on gpio %d\n", gpio);
-		goto fail_concurrency_mode;
-	}
-	ext_chg->otg_wlc_on_gpio = gpio_to_desc(gpio);
-
-	return;
-
-fail_concurrency_mode:
-	ext_chg->enable_concurrency_otg_wlc = false;
-}
-
-
 ////////////////////////////////////////////////////////////////////////////
 // LGE Workaround : Helper functions init
 ////////////////////////////////////////////////////////////////////////////
-
-/* update pmic register for complice test */
-void wa_update_pmic_reg_with_complice_mode(struct smb_charger* chg)
-{
-#ifdef CONFIG_LGE_USB
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-	int rc;
-
-	if (ext_chg->is_usb_compliance_mode) {
-		/*
-		 * Check for VBUS at vSAFE0V before transitioning into
-		 * ATTACHED.SRC state
-		 */
-		rc = smblib_masked_write(chg, TYPE_C_EXIT_STATE_CFG_REG,
-				BYPASS_VSAFE0V_DURING_ROLE_SWAP_BIT,
-				0);
-		if (rc < 0) {
-			dev_err(chg->dev, "Couldn't set EXIT_STATE cfg rc=%d\n",
-				rc);
-			return;
-		}
-
-		/* disable crude sensors */
-		rc = smblib_masked_write(chg, TYPE_C_CRUDE_SENSOR_CFG_REG,
-				EN_SRC_CRUDE_SENSOR_BIT |
-				EN_SNK_CRUDE_SENSOR_BIT,
-				0);
-		if (rc < 0) {
-			dev_err(chg->dev, "Couldn't disable crude sensor rc=%d\n",
-				rc);
-			return;
-		}
-
-		/*
-		 * Do not apply tPDdebounce on exit condition for
-		 * attachedwait.SRC and attached.SRC
-		 */
-		rc = smblib_masked_write(chg, TYPE_C_EXIT_STATE_CFG_REG,
-				BIT(1), 0);
-		if (rc < 0) {
-			dev_err(chg->dev, "Couldn't set USE_TPD_FOR_EXITING_ATTACHSRC rc=%d\n",
-				rc);
-			return;
-		}
-	} else {
-		/*
-		 * Do not check for VBUS at vSAFE0V before transitioning into
-		 * ATTACHED.SRC state
-		 */
-		rc = smblib_masked_write(chg, TYPE_C_EXIT_STATE_CFG_REG,
-				BYPASS_VSAFE0V_DURING_ROLE_SWAP_BIT,
-				BYPASS_VSAFE0V_DURING_ROLE_SWAP_BIT);
-		if (rc < 0) {
-			dev_err(chg->dev, "Couldn't set EXIT_STATE cfg rc=%d\n",
-				rc);
-			return;
-		}
-
-		/* enable crude sensors */
-		rc = smblib_masked_write(chg, TYPE_C_CRUDE_SENSOR_CFG_REG,
-				EN_SRC_CRUDE_SENSOR_BIT |
-				EN_SNK_CRUDE_SENSOR_BIT,
-				EN_SRC_CRUDE_SENSOR_BIT |
-				EN_SNK_CRUDE_SENSOR_BIT);
-		if (rc < 0) {
-			dev_err(chg->dev, "Couldn't enable crude sensor rc=%d\n",
-				rc);
-			return;
-		}
-	}
-#endif
-}
 
 /* global LGE workaround notification callback */
 int wa_typec_state_change_nb(struct notifier_block *nb, unsigned long empty, void *v)
@@ -3002,7 +2636,6 @@ int wa_typec_state_change_nb(struct notifier_block *nb, unsigned long empty, voi
 	wa_charging_without_cc_trigger(chg);
 	wa_charging_with_rd_trigger(chg);
 	wa_retry_vconn_enable_on_vconn_oc_clear(chg);
-	wa_disable_otg_hiccup_clear(chg);
 
 	return NOTIFY_OK;
 }
@@ -3024,7 +2657,7 @@ int wa_usbin_plugin_nb(struct notifier_block *nb, unsigned long vbus, void *v)
 	wa_charging_without_cc_trigger(chg);
 	wa_charging_for_mcdodo_clear(chg);
 	if (vbus) { /* attached */
-		wa_avoid_inrush_current_triger(chg);
+
 		wa_faster_try_apsd_trigger(chg);
 	}
 	else { /* detached */
@@ -3037,7 +2670,6 @@ int wa_usbin_plugin_nb(struct notifier_block *nb, unsigned long vbus, void *v)
 		wa_charging_with_rd_clear(chg);
 		wa_clear_pr_without_charger_trigger(chg);
 		wa_retry_ok_to_pd_clear(chg);
-		wa_avoid_inrush_current_clear(chg);
 		wa_faster_try_apsd_clear(chg);
 		wa_faster_try_cp_qc30_clear(chg);
 		wa_fake_usb_type_with_factory_clear(chg);
@@ -3064,23 +2696,6 @@ int wa_source_change_nb(struct notifier_block *nb, unsigned long empty, void *v)
 	wa_bad_operation_pps_ta_trigger(chg);
 
 	return NOTIFY_OK;
-}
-
-void wa_update_usb_compliance_mode(bool mode)
-{
-	struct smb_charger* chg = wa_helper_chg();
-	struct ext_smb_charger *ext_chg;
-
-	if (!chg) {
-		pr_wa("'chg' is not ready\n");
-		return;
-	}
-
-	ext_chg = chg->ext_chg;
-	ext_chg->is_usb_compliance_mode = mode;
-
-	wa_avoid_inrush_current_with_compliance_triger(chg);
-	wa_update_pmic_reg_with_complice_mode(chg);
 }
 
 void wa_update_usb_configured(bool configured)
@@ -3116,7 +2731,6 @@ void wa_helper_init(struct smb_charger *chg)
 
 	INIT_WORK(&ext_chg->wa_get_pmic_dump_work, wa_get_pmic_dump_func);
 
-	wa_update_usb_compliance_mode(false);
 	wa_update_usb_configured(false);
 	wa_update_hall_ic(false);
 	wa_detect_standard_hvdcp_init(chg);
@@ -3130,10 +2744,8 @@ void wa_helper_init(struct smb_charger *chg)
 	wa_clear_dc_reverse_volt_init(chg);
 	wa_dcin_rerun_aicl_init(chg);
 	wa_recovery_vashdn_wireless_init(chg);
-	wa_avoid_fod_status_init(chg);
 	wa_retry_vconn_enable_on_vconn_oc_init(chg);
 	wa_retry_ok_to_pd_init(chg);
-	wa_avoid_inrush_current_init(chg);
 	wa_protect_overcharging_init(chg);
 	wa_fake_usb_type_with_factory_init(chg);
 	wa_fake_cc_status_init(chg);
@@ -3142,11 +2754,9 @@ void wa_helper_init(struct smb_charger *chg)
 	wa_retry_apsd_with_factory_init(chg);
 	wa_charging_for_mcdodo_init(chg);
 	wa_disable_cp_with_fake_mode_init(chg);
-	wa_disable_otg_hiccup_init(chg);
 	wa_control_vbus2_regulator_init(chg);
 	wa_comp_pwr_cp_qc30_init(chg);
 	wa_bad_operation_pps_ta_init(chg);
-	wa_concurrency_mode_for_otg_wlc(chg);
 
 	ext_chg->wa_source_change_nb.notifier_call = wa_source_change_nb;
 	ext_chg->wa_usbin_plugin_nb.notifier_call = wa_usbin_plugin_nb;

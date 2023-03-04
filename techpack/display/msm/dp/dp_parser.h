@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _DP_PARSER_H_
@@ -190,7 +190,6 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @has_mst: MST feature enable status
  * @has_mst_sideband: MST sideband feature enable status
  * @no_aux_switch: presence AUX switch status
- * @no_mst_encoder: only one dp interface available
  * @gpio_aux_switch: presence GPIO AUX switch status
  * @dsc_feature_enable: DSC feature enable status
  * @fec_feature_enable: FEC feature enable status
@@ -220,7 +219,6 @@ struct dp_parser {
 	bool has_mst;
 	bool has_mst_sideband;
 	bool no_aux_switch;
-	bool no_mst_encoder;
 	bool dsc_feature_enable;
 	bool fec_feature_enable;
 	bool has_widebus;
@@ -231,9 +229,6 @@ struct dp_parser {
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 #ifdef CONFIG_LGE_DISPLAY_COMMON
 	bool lge_dp_use;
-#ifdef CONFIG_LGE_DUAL_SCREEN
-	bool lge_dp_aux_sel_inverse;
-#endif
 #endif
 
 	int (*parse)(struct dp_parser *parser);

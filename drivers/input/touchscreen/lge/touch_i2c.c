@@ -311,8 +311,8 @@ static int touch_i2c_pm_resume(struct device *dev)
 
 	TOUCH_TRACE();
 
-	if (atomic_cmpxchg((&ts->state.pm), DEV_PM_SUSPEND_IRQ, DEV_PM_RESUME)
-			== DEV_PM_SUSPEND_IRQ) {
+	if (atomic_read(&ts->state.pm) == DEV_PM_SUSPEND_IRQ) {
+		atomic_set(&ts->state.pm, DEV_PM_RESUME);
 		TOUCH_I("%s : DEV_PM_RESUME\n", __func__);
 		touch_set_irq_pending(ts->irq);
 		touch_resend_irq(ts->irq);
@@ -427,7 +427,7 @@ int touch_i2c_device_init(struct touch_hwif *hwif, void *driver)
 
 	info->hwif = hwif;
 	info->touch_driver = driver;
-	TOUCH_I("touch compatible:%s \n", info->bus_driver.driver.of_match_table->compatible);
+
 	return i2c_register_driver(info->hwif->owner, &info->bus_driver);
 }
 

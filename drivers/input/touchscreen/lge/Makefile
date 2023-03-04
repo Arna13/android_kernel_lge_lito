@@ -20,7 +20,6 @@ obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= touch_i2c.o
 obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= touch_spi.o
 obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= touch_model.o
 obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= touch_notify.o
-obj-$(CONFIG_LGE_TOUCH_ENCRYPTION)	+= touch_encryption.o
 obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= module/touch_module_builtIn.o
 
 obj-$(CONFIG_LGE_TOUCH_CORE_QCT)	+= touch_hwif.o
@@ -28,7 +27,4 @@ obj-$(CONFIG_LGE_TOUCH_CORE_MTK)	+= touch_hwif_mtk.o
 obj-$(CONFIG_LGE_TOUCH_PEN)		+= touch_pen.o
 obj-$(CONFIG_LGE_TOUCH_DEX)		+= touch_dex.o
 obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= lgsic/
-obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= synaptics/
-obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= focaltech/
-obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= himax/
 obj-$(CONFIG_LGE_TOUCH_CORE_BASE)	+= module/

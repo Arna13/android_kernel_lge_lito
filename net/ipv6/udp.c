@@ -54,8 +54,13 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <trace/events/skb.h>
-#include <trace/events/udp.h>
 #include "udp_impl.h"
+#include <net/patchcodeid.h>
+
+/* 2017-05-19 yunsik.lee@lge.com LGP_DATA_UDP_PREVENT_ICMPv6_WITH_CLAT_IID [START] */
+unsigned int sysctl_clat_iid1 __read_mostly = 0;
+unsigned int sysctl_clat_iid2 __read_mostly = 0;
+/* 2017-05-19 yunsik.lee@lge.com LGP_DATA_UDP_PREVENT_ICMPv6_WITH_CLAT_IID [END] */
 
 static bool udp6_lib_exact_dif_match(struct net *net, struct sk_buff *skb)
 {
@@ -155,7 +160,7 @@ static int compute_score(struct sock *sk, struct net *net,
 			score++;
 	}
 
-	if (READ_ONCE(sk->sk_incoming_cpu) == raw_smp_processor_id())
+	if (sk->sk_incoming_cpu == raw_smp_processor_id())
 		score++;
 
 	return score;
@@ -539,11 +544,9 @@ static int __udpv6_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 		int is_udplite = IS_UDPLITE(sk);
 
 		/* Note that an ENOMEM error is charged twice */
-		if (rc == -ENOMEM) {
+		if (rc == -ENOMEM)
 			UDP6_INC_STATS(sock_net(sk),
 					 UDP_MIB_RCVBUFERRORS, is_udplite);
-			trace_udpv6_fail_rcv_buf_errors(skb);
-		}
 		UDP6_INC_STATS(sock_net(sk), UDP_MIB_INERRORS, is_udplite);
 		kfree_skb(skb);
 		return -1;
@@ -891,6 +894,13 @@ int __udp6_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 		goto csum_error;
 
 	__UDP6_INC_STATS(net, UDP_MIB_NOPORTS, proto == IPPROTO_UDPLITE);
+    /* 2017-05-19 yunsik.lee@lge.com LGP_DATA_UDP_PREVENT_ICMPv6_WITH_CLAT_IID [START] */
+    patch_code_id("LPCP-2049@y@c@vmlinux@udp.c@1");
+    if ( (sysctl_clat_iid1 == ntohl(daddr->s6_addr32[2]) ) && ( sysctl_clat_iid2 == ntohl(daddr->s6_addr32[3] ) ) ) {
+        kfree_skb(skb);
+        return 0;
+    }
+    /* 2017-05-19 yunsik.lee@lge.com LGP_DATA_UDP_PREVENT_ICMPv6_WITH_CLAT_IID [END] */
 	icmpv6_send(skb, ICMPV6_DEST_UNREACH, ICMPV6_PORT_UNREACH, 0);
 
 	kfree_skb(skb);

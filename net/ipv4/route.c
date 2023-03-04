@@ -143,8 +143,7 @@ static unsigned int	 ipv4_mtu(const struct dst_entry *dst);
 static struct dst_entry *ipv4_negative_advice(struct dst_entry *dst);
 static void		 ipv4_link_failure(struct sk_buff *skb);
 static void		 ip_rt_update_pmtu(struct dst_entry *dst, struct sock *sk,
-					   struct sk_buff *skb, u32 mtu,
-					   bool confirm_neigh);
+					   struct sk_buff *skb, u32 mtu);
 static void		 ip_do_redirect(struct dst_entry *dst, struct sock *sk,
 					struct sk_buff *skb);
 static void		ipv4_dst_destroy(struct dst_entry *dst);
@@ -1037,8 +1036,7 @@ static void __ip_rt_update_pmtu(struct rtable *rt, struct flowi4 *fl4, u32 mtu)
 }
 
 static void ip_rt_update_pmtu(struct dst_entry *dst, struct sock *sk,
-			      struct sk_buff *skb, u32 mtu,
-			      bool confirm_neigh)
+			      struct sk_buff *skb, u32 mtu)
 {
 	struct rtable *rt = (struct rtable *) dst;
 	struct flowi4 fl4;
@@ -1293,8 +1291,19 @@ static void set_class_tag(struct rtable *rt, u32 tag)
 static unsigned int ipv4_default_advmss(const struct dst_entry *dst)
 {
 	unsigned int header_size = sizeof(struct tcphdr) + sizeof(struct iphdr);
+/* 2016-12-23 hyoseab.song@lge.com LGP_DATA_ENABLE_MODEM_CLAT [START] */
+	const struct rtable *rt = (const struct rtable *) dst;
+/* 2016-12-23 hyoseab.song@lge.com LGP_DATA_ENABLE_MODEM_CLAT [END] */
 	unsigned int advmss = max_t(unsigned int, ipv4_mtu(dst) - header_size,
 				    ip_rt_min_advmss);
+
+	/* 2016-12-23 hyoseab.song@lge.com LGP_DATA_ENABLE_MODEM_CLAT [START] */
+	patch_code_id("LPCP-2245@y@q@vmlinux@route.c@1");
+	if(strncmp(dst->dev->name,"rmnet",strlen("rmnet")) == 0 && (rt->rt_gateway & 0x00FFFFFF) == 0x000000C0) {
+		advmss = max_t(unsigned int, dst->dev->mtu - 28 - 40,
+			ip_rt_min_advmss);
+	}
+	/* 2016-12-23 hyoseab.song@lge.com LGP_DATA_ENABLE_MODEM_CLAT [END] */
 
 	return min(advmss, IPV4_MAX_PMTU - header_size);
 }
@@ -1311,6 +1320,12 @@ static unsigned int ipv4_mtu(const struct dst_entry *dst)
 		return mtu;
 
 	mtu = READ_ONCE(dst->dev->mtu);
+/* 2016-12-23 hyoseab.song@lge.com LGP_DATA_ENABLE_MODEM_CLAT [START] */
+	patch_code_id("LPCP-2245@y@q@vmlinux@route.c@2");
+	if(strncmp(dst->dev->name,"rmnet",strlen("rmnet")) == 0 && (rt->rt_gateway & 0x00FFFFFF) == 0x000000C0) {
+		mtu = mtu - 28;
+	}
+/* 2016-12-23 hyoseab.song@lge.com LGP_DATA_ENABLE_MODEM_CLAT [END] */
 
 	if (unlikely(ip_mtu_locked(dst))) {
 		if (rt->rt_uses_gateway && mtu > 576)
@@ -2539,6 +2554,14 @@ struct rtable *ip_route_output_key_hash_rcu(struct net *net, struct flowi4 *fl4,
 	fib_select_path(net, res, fl4, skb);
 
 	dev_out = FIB_RES_DEV(*res);
+	/* 2012-06-16 jewon.lee@lge.com LGP_DATA_KERNEL_BUGFIX_ROUTE [START] */
+	patch_code_id("LPCP-1244@n@c@vmlinux@route.c@1");
+	if (dev_out == NULL) {
+		printk(KERN_DEBUG "dev_out is null\n");
+		rth = ERR_PTR(-ENETUNREACH);
+		goto out;
+	}
+	/* 2012-06-16 jewon.lee@lge.com LGP_DATA_KERNEL_BUGFIX_ROUTE [END] */
 	fl4->flowi4_oif = dev_out->ifindex;
 
 
@@ -2562,8 +2585,7 @@ static unsigned int ipv4_blackhole_mtu(const struct dst_entry *dst)
 }
 
 static void ipv4_rt_blackhole_update_pmtu(struct dst_entry *dst, struct sock *sk,
-					  struct sk_buff *skb, u32 mtu,
-					  bool confirm_neigh)
+					  struct sk_buff *skb, u32 mtu)
 {
 }
 

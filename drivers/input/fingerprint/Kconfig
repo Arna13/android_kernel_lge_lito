@@ -15,10 +15,5 @@ config BBK_ET713
 	tristate "Egis ET713 fingerprint drvier support"
 	help
 	  Say Y here to enable et713 fingerprint driver support!
-
-config INPUT_FINGERPRINT_FPC1540
-	tristate "FPC FPC1540 fingerprint drvier support"
-	help
-	  Say Y here to enable fpc1540 fingerprint driver support!
 endif
 

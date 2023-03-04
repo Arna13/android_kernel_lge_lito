@@ -826,17 +826,13 @@ static int __read_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 		 */
 		mb();
 		*pb_tx_req_is_set = 0;
-		if (write_idx != queue->qhdr_write_idx) {
-			queue->qhdr_rx_req = 0;
-		} else {
-			spin_unlock(&qinfo->hfi_lock);
-			dprintk(CVP_DBG,
-				"%s queue is empty, rx_req = %u, tx_req = %u, read_idx = %u\n",
-				receive_request ? "message" : "debug",
-				queue->qhdr_rx_req, queue->qhdr_tx_req,
-				queue->qhdr_read_idx);
-			return -ENODATA;
-		}
+		spin_unlock(&qinfo->hfi_lock);
+		dprintk(CVP_DBG,
+			"%s queue is empty, rx_req = %u, tx_req = %u, read_idx = %u\n",
+			receive_request ? "message" : "debug",
+			queue->qhdr_rx_req, queue->qhdr_tx_req,
+			queue->qhdr_read_idx);
+		return -ENODATA;
 	}
 
 	read_ptr = (u32 *)((qinfo->q_array.align_virtual_addr) +
@@ -880,7 +876,7 @@ static int __read_queue(struct cvp_iface_q_info *qinfo, u8 *packet,
 		rc = -ENODATA;
 	}
 
-	if (new_read_idx != queue->qhdr_write_idx)
+	if (read_idx != write_idx)
 		queue->qhdr_rx_req = 0;
 	else
 		queue->qhdr_rx_req = receive_request;
@@ -1427,9 +1423,9 @@ static int iris_hfi_flush_debug_queue(void *dev)
 		return -EINVAL;
 	}
 
+	cvp_dump_csr(device);
 	mutex_lock(&device->lock);
 
-	cvp_dump_csr(device);
 	if (!device->power_enabled) {
 		dprintk(CVP_WARN, "%s: iris power off\n", __func__);
 		rc = -EINVAL;

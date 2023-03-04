@@ -55,10 +55,6 @@ enum pm_qos_req_type {
 };
 
 struct pm_qos_request {
-#ifdef CONFIG_LGE_PM_DEBUG
-	char name[WORKER_DESC_LEN];
-	//char desc[WORKER_DESC_LEN]; /* for debugging */
-#endif
 	enum pm_qos_req_type type;
 	struct cpumask cpus_affine;
 #ifdef CONFIG_SMP

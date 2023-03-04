@@ -370,7 +370,7 @@ static int pen_init_input(struct module_data *md)
 	}
 
 	input->name = "pen_sub_dev";
-	input->phys = "devices/virtual/input";
+
 	set_bit(EV_SYN, input->evbit);
 	set_bit(EV_ABS, input->evbit);
 	set_bit(EV_KEY, input->evbit);

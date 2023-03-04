@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/usb/usbpd.h>
@@ -10,17 +10,6 @@
 
 #include "dp_usbpd.h"
 #include "dp_debug.h"
-
-#if IS_ENABLED(CONFIG_LGE_DISPLAY_NOT_SUPPORT_DISPLAYPORT)
-#include "../lge/dp/lge_dp.h"
-#endif
-
-#if IS_ENABLED(CONFIG_LGE_DISPLAY_NOT_SUPPORT_DISPLAYPORT)
-struct dp_noti_dev dpdev = {
-	.name = "dp_notify",
-	.state = 0,
-};
-#endif
 
 /* DP specific VDM commands */
 #define DP_USBPD_VDM_STATUS	0x10
@@ -257,13 +246,9 @@ static void dp_usbpd_connect_cb(struct usbpd_svid_handler *hdlr,
 		return;
 	}
 
-	DP_DEBUG("peer_usb_comm: %d\n", peer_usb_comm);
+	DP_DEBUG("peer_usb_comm: %d\n");
 	pd->dp_usbpd.base.peer_usb_comm = peer_usb_comm;
 	dp_usbpd_send_event(pd, DP_USBPD_EVT_DISCOVER);
-
-#if IS_ENABLED(CONFIG_LGE_DISPLAY_NOT_SUPPORT_DISPLAYPORT)
-	dp_noti_set_state(&dpdev, 1);
-#endif
 }
 
 static void dp_usbpd_disconnect_cb(struct usbpd_svid_handler *hdlr)
@@ -282,10 +267,6 @@ static void dp_usbpd_disconnect_cb(struct usbpd_svid_handler *hdlr)
 
 	if (pd->dp_cb && pd->dp_cb->disconnect)
 		pd->dp_cb->disconnect(pd->dev);
-
-#if IS_ENABLED(CONFIG_LGE_DISPLAY_NOT_SUPPORT_DISPLAYPORT)
-	dp_noti_set_state(&dpdev, 0);
-#endif
 }
 
 static int dp_usbpd_validate_callback(u8 cmd,
@@ -514,10 +495,6 @@ int dp_usbpd_register(struct dp_hpd *dp_hpd)
 	if (rc)
 		DP_ERR("pd registration failed\n");
 
-#if IS_ENABLED(CONFIG_LGE_DISPLAY_NOT_SUPPORT_DISPLAYPORT)
-	dp_noti_register(&dpdev);
-#endif
-
 	return rc;
 }
 
@@ -601,8 +578,4 @@ void dp_usbpd_put(struct dp_hpd *dp_hpd)
 	usbpd_unregister_svid(usbpd->pd, &usbpd->svid_handler);
 
 	devm_kfree(usbpd->dev, usbpd);
-
-#if IS_ENABLED(CONFIG_LGE_DISPLAY_NOT_SUPPORT_DISPLAYPORT)
-	dp_noti_unregister(&dpdev);
-#endif
 }

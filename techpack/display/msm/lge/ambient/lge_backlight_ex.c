@@ -68,9 +68,7 @@ int lge_update_backlight_ex(struct dsi_panel *panel)
 		return -EINVAL;
 
 	ex_bd = panel->lge.bl_ex_device;
-	display = container_of(panel->host, struct dsi_display, host);
-
-	if (ex_bd == NULL || display == NULL)
+	if (ex_bd == NULL)
 		return -EINVAL;
 
 	if (panel->lge.allow_bl_update_ex || !lge_dsi_panel_is_power_on_lp(panel))
@@ -78,12 +76,12 @@ int lge_update_backlight_ex(struct dsi_panel *panel)
 
 	if (panel->bl_config.type != DSI_BACKLIGHT_WLED)
 		mutex_lock(&ex_bd->ops_lock);
-
-	mutex_lock(&display->display_lock);
 	if (panel->lge.bl_ex_lvl_unset < 0) {
 		rc = 0;
 		goto exit;
 	}
+
+	display = container_of(panel->host, struct dsi_display, host);
 
 	rc = dsi_display_set_backlight_ex(display, panel->lge.bl_ex_lvl_unset);
 	if (!rc) {
@@ -93,7 +91,6 @@ int lge_update_backlight_ex(struct dsi_panel *panel)
 	panel->lge.bl_ex_lvl_unset = -1;
 
 exit:
-	mutex_unlock(&display->display_lock);
 	if (panel->bl_config.type != DSI_BACKLIGHT_WLED)
 		mutex_unlock(&ex_bd->ops_lock);
 	return rc;

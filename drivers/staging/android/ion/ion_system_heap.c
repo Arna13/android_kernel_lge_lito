@@ -587,13 +587,11 @@ err_free_sg2:
 	buffer->private_flags |= ION_PRIV_FLAG_SHRINKER_FREE;
 
 	if (vmid > 0)
-		if (ion_hyp_unassign_sg(table, &vmid, 1, true, false))
-			goto err_free_table_sync;
+		ion_hyp_unassign_sg(table, &vmid, 1, true, false);
 
 	for_each_sg(table->sgl, sg, table->nents, i)
 		free_buffer_page(sys_heap, buffer, sg_page(sg),
 				 get_order(sg->length));
-err_free_table_sync:
 	if (nents_sync)
 		sg_free_table(&table_sync);
 err_free_sg:
@@ -694,14 +692,8 @@ static struct ion_heap_ops system_heap_ops = {
 	.shrink = ion_system_heap_shrink,
 };
 
-
-#ifdef CONFIG_ION_DEBUGGING_PROCFS
-int ion_system_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
-					  void *unused)
-#else
 static int ion_system_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
 				      void *unused)
-#endif
 {
 	struct ion_system_heap *sys_heap;
 	bool use_seq = s;
@@ -866,9 +858,6 @@ static int ion_system_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
 
 	return 0;
 }
-#ifdef CONFIG_ION_DEBUGGING_PROCFS
-EXPORT_SYMBOL_GPL(ion_system_heap_debug_show);
-#endif
 
 static void ion_system_heap_destroy_pools(struct ion_page_pool **pools)
 {
@@ -946,8 +935,8 @@ static struct task_struct *ion_create_kworker(struct ion_page_pool **pools,
 	attr.sched_nice = ION_KTHREAD_NICE_VAL;
 	buf = cached ? "cached" : "uncached";
 
-	thread = kthread_run(ion_sys_heap_worker, pools,
-			     "ion-pool-%s-worker", buf);
+	thread = kthread_create(ion_sys_heap_worker, pools,
+				"ion-pool-%s-worker", buf);
 	if (IS_ERR(thread)) {
 		pr_err("%s: failed to create %s worker thread: %ld\n",
 		       __func__, buf, PTR_ERR(thread));

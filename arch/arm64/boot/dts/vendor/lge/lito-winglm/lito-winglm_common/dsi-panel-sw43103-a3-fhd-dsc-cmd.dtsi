@@ -180,16 +180,13 @@
 		lge,mdss-dsi-fp-lhbm-exit-command-state = "dsi_hs_mode";
 
 		lge,mdss-dsi-fp-lhbm-on-command = [
-			15 01 00 00 00 00 02 B0 A5
-			39 01 00 00 00 00 0C CD 10 12 01 5A 90 00 00 00 00 00 62 //FPS cicle size
-			15 01 00 00 00 00 02 B0 A1
 			39 01 00 00 00 00 03 51 06 A9 // Set max brightness
-			39 01 00 00 00 00 0B 55 08 08 72 D4 1C 61 0A 90 04 00 //FPS ON, Set position
+			39 01 00 00 00 00 0B 55 08 08 82 8B 1C 61 0A 90 04 00 //FPS ON, Set position
 		];
 		lge,mdss-dsi-fp-lhbm-on-command-state = "dsi_hs_mode";
 
 		lge,mdss-dsi-fp-lhbm-off-command = [
-			39 01 00 00 00 00 0B 55 08 00 72 D4 1C 61 0A 90 04 00 //FPS OFF
+			39 01 00 00 00 00 0B 55 08 00 82 8B 1C 61 0A 90 04 00 //FPS OFF
 		];
 		lge,mdss-dsi-fp-lhbm-off-command-state = "dsi_hs_mode";
 
@@ -362,9 +359,6 @@
 					15 01 00 00 00 00 02 B0 CA			//Manufacturer Command Protect
 					05 01 00 00 64 00 01 11				//Sleep Out
 
-					15 01 00 00 00 00 02 B0 A6
-					39 01 00 00 00 00 05 FC 00 00 41 40		//Touch Vsync_enable
-
 					15 01 00 00 00 00 02 B0 A1			//MCS Lv1
 					39 01 00 00 00 00 0D B3 91 49 00 0F 0C 00 0F 0C 28 00 02 14		//Work-Round for AOD VBP Issue
 
@@ -435,11 +429,11 @@
 					39 01 00 00 00 00 11 D5 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
 
 					15 01 00 00 00 00 02 B0 A5
-					39 01 00 00 00 00 0C CD 10 12 01 5A 90 00 00 00 00 00 62
+					39 01 00 00 00 00 0C CD 10 12 01 5A 90 00 00 00 00 00 5D
 
 					/* FPS Mode1 setting and Position */
 					15 01 00 00 00 00 02 B0 A1
-					39 01 00 00 00 00 0B 55 08 00 72 D4 1C 61 0A 90 04 00  //(29 pixel higher)
+					39 01 00 00 00 00 0B 55 08 00 82 8B 1C 61 0A 90 04 00  //(29 pixel higher)
 
 					/* Dimming Frame Setting */
 					15 01 00 00 00 00 02 B0 A3

@@ -186,7 +186,8 @@
 &pm7250b_adc_tm {
 	io-channels = <&pm7250b_vadc ADC_AMUX_THM1_PU2>,
 			<&pm7250b_vadc ADC_GPIO2_PU2>,
-			<&pm7250b_vadc ADC_GPIO3_PU2>;
+			<&pm7250b_vadc ADC_GPIO3_PU2>,
+			<&pm7250b_vadc ADC_GPIO4_PU2>;
 
 	/* quiet_therm */
 	charger_skin_therm@4d {
@@ -201,9 +202,6 @@
 		qcom,ratiometric;
 		qcom,hw-settle-time = <200>;
 	};
-
-	/* Unused io-channel "&pm7250b_vadc ADC_GPIO4_PU2" and and their child node "camera_flash_therm" should be removed in main dtsi,
-	   because maximum four ADC_TM channels can be added. */
 };
 
 &thermal_zones {
@@ -301,10 +299,6 @@
 	};
 
 	mmw-pa4-usr {
-		status = "disabled";
-	};
-
-	camera-therm-usr {
 		status = "disabled";
 	};
 };

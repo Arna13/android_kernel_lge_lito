@@ -48,10 +48,6 @@
 #define PSCI_POWER_STATE(reset) (reset << 30)
 #define PSCI_AFFINITY_LEVEL(lvl) ((lvl & 0x3) << 24)
 
-#ifdef CONFIG_LGE_PM
-void gpio_debug_print_enabled(void);
-#endif
-
 enum {
 	MSM_LPM_LVL_DBG_SUSPEND_LIMITS = BIT(0),
 	MSM_LPM_LVL_DBG_IDLE_LIMITS = BIT(1),
@@ -1132,13 +1128,8 @@ static int cluster_configure(struct lpm_cluster *cluster, int idx,
 		 * LPMs (XO and Vmin).
 		 */
 		if (!from_idle) {
-#ifndef CONFIG_LGE_PM_DEBUG
-            clock_debug_print_enabled();
-#endif
+			clock_debug_print_enabled();
 			regulator_debug_print_enabled();
-#ifdef CONFIG_LGE_PM
-			gpio_debug_print_enabled();
-#endif
 		}
 
 		cpu = get_next_online_cpu(from_idle);
@@ -1223,8 +1214,7 @@ static void cluster_prepare(struct lpm_cluster *cluster,
 	if (cluster_configure(cluster, i, from_idle, predicted))
 		goto failed;
 
-	if (!IS_ERR_OR_NULL(cluster->stats))
-		cluster->stats->sleep_time = start_time;
+	cluster->stats->sleep_time = start_time;
 	cluster_prepare(cluster->parent, &cluster->num_children_in_sync, i,
 			from_idle, start_time);
 
@@ -1232,8 +1222,7 @@ static void cluster_prepare(struct lpm_cluster *cluster,
 	return;
 failed:
 	spin_unlock(&cluster->sync_lock);
-	if (!IS_ERR_OR_NULL(cluster->stats))
-		cluster->stats->sleep_time = 0;
+	cluster->stats->sleep_time = 0;
 }
 
 static void cluster_unprepare(struct lpm_cluster *cluster,
@@ -1272,7 +1261,7 @@ static void cluster_unprepare(struct lpm_cluster *cluster,
 	if (!first_cpu || cluster->last_level == cluster->default_level)
 		goto unlock_return;
 
-	if (!IS_ERR_OR_NULL(cluster->stats) && cluster->stats->sleep_time)
+	if (cluster->stats->sleep_time)
 		cluster->stats->sleep_time = end_time -
 			cluster->stats->sleep_time;
 	lpm_stats_cluster_exit(cluster->stats, cluster->last_level, success);
@@ -1382,7 +1371,7 @@ static bool psci_enter_sleep(struct lpm_cpu *cpu, int idx, bool from_idle)
 		if (cpu->bias)
 			biastimer_start(cpu->bias);
 		stop_critical_timings();
-		cpu_do_idle();
+		wfi();
 		start_critical_timings();
 		return true;
 	}
@@ -1711,9 +1700,6 @@ static void register_cluster_lpm_stats(struct lpm_cluster *cl,
 
 	cl->stats = lpm_stats_config_level(cl->cluster_name, level_name,
 			cl->nlevels, parent ? parent->stats : NULL, NULL);
-	if (IS_ERR_OR_NULL(cl->stats))
-		pr_info("Cluster (%s) stats not registered\n",
-			cl->cluster_name);
 
 	kfree(level_name);
 
@@ -1758,21 +1744,6 @@ static int lpm_suspend_enter(suspend_state_t state)
 		pr_err("Failed suspend\n");
 		return 0;
 	}
-
-	/*
-	 * Print the clocks and regulators which are enabled during
-	 * system suspend.  This debug information is useful to know
-	 * which resources are enabled and preventing the system level
-	 * LPMs (XO and Vmin).
-	 */
-
-#ifdef CONFIG_LGE_PM_DEBUG
-	clock_debug_print_enabled(true);
-#else
-	clock_debug_print_enabled();
-#endif
-	regulator_debug_print_enabled();
-
 	cpu_prepare(lpm_cpu, idx, false);
 	cluster_prepare(cluster, cpumask, idx, false, 0);
 
@@ -1872,7 +1843,7 @@ static int lpm_probe(struct platform_device *pdev)
 	md_entry.phys_addr = lpm_debug_phys;
 	md_entry.size = size;
 	md_entry.id = MINIDUMP_DEFAULT_ID;
-	if (msm_minidump_add_region(&md_entry) < 0)
+	if (msm_minidump_add_region(&md_entry))
 		pr_info("Failed to add lpm_debug in Minidump\n");
 
 	return 0;

@@ -31,13 +31,12 @@
 
 #define SYNC_LINK_SOF_CNT_MAX_LMT 1
 
-#define MAXIMUM_LINKS_PER_SESSION  7
+#define MAXIMUM_LINKS_PER_SESSION  4
 
 #define MAXIMUM_RETRY_ATTEMPTS 2
 
 #define VERSION_1  1
 #define VERSION_2  2
-#define CAM_REQ_MGR_MAX_TRIGGERS   2
 
 /**
  * enum crm_workq_task_type
@@ -346,11 +345,6 @@ struct cam_req_mgr_connected_device {
  *                         as part of shutdown.
  * @sof_timestamp_value  : SOF timestamp value
  * @prev_sof_timestamp   : Previous SOF timestamp value
- * @dual_trigger         : Links needs to wait for two triggers prior to
- *                         applying the settings
- * @trigger_cnt          : trigger count value per device initiating the trigger
- * @skip_wd_validation   : skip initial frames crm_wd_timer validation in the
- *                         case of long exposure use case
  */
 struct cam_req_mgr_core_link {
 	int32_t                              link_hdl;
@@ -381,10 +375,6 @@ struct cam_req_mgr_core_link {
 	bool                                 is_shutdown;
 	uint64_t                             sof_timestamp;
 	uint64_t                             prev_sof_timestamp;
-	bool                                 dual_trigger;
-	uint32_t    trigger_cnt[CAM_REQ_MGR_MAX_TRIGGERS];
-	bool                                 skip_wd_validation;
-
 };
 
 /**

@@ -235,5 +235,4 @@ source "drivers/tspdrv/Kconfig"
 
 source "drivers/gud/Kconfig"
 
-source "drivers/motors/Kconfig"
 endmenu

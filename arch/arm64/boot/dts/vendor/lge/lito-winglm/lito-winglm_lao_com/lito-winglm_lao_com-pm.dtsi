@@ -5,7 +5,7 @@
 
 #include "../lito-winglm_common/lito-winglm_common-pm.dtsi"
 
-&qupv3_se9_i2c {
+&qupv3_se4_i2c {
 	status = "ok";
 	#include "../../../qcom/smb1390.dtsi"
 };
@@ -36,8 +36,8 @@
 &soc {
     lge_batterydata: qcom,battery-data {
         qcom,batt-id-range-pct = <15>;
-        #include "../../battery_profile/LGE_BLT47_LGC_4300mAh.dtsi"
         #include "../../battery_profile/LGE_BLT47_ATL_4300mAh.dtsi"
+        #include "../../battery_profile/LGE_BLT47F_ATL_4300mAh.dtsi"
     };
 };
 
@@ -169,7 +169,8 @@
 &pm7250b_adc_tm {
 	io-channels = <&pm7250b_vadc ADC_AMUX_THM1_PU2>,
 			<&pm7250b_vadc ADC_GPIO2_PU2>,
-			<&pm7250b_vadc ADC_GPIO3_PU2>;
+			<&pm7250b_vadc ADC_GPIO3_PU2>,
+			<&pm7250b_vadc ADC_GPIO4_PU2>;
 
 	/* quiet_therm */
 	charger_skin_therm@4d {
@@ -184,9 +185,6 @@
 		qcom,ratiometric;
 		qcom,hw-settle-time = <200>;
 	};
-
-	/* Unused io-channel "&pm7250b_vadc ADC_GPIO4_PU2" and and their child node "camera_flash_therm" should be removed in main dtsi,
-	   because maximum four ADC_TM channels can be added. */
 };
 
 &thermal_zones {
@@ -286,9 +284,101 @@
 	mmw-pa4-usr {
 		status = "disabled";
 	};
+};
 
-	camera-therm-usr {
-		status = "disabled";
+&pm7250b_charger {
+    status = "ok";
+    qcom,otg-cl-ua=<2000000>;
+    qcom,sec-charger-config = <1>;
+    qcom,auto-recharge-soc = <98>;
+    lge,psns-ratio-ua = <50000>;
+    qcom,wls-current-max-ua = <800000>;
+    io-channels = <&pm7250b_vadc ADC_MID_CHG_DIV6>,
+              <&pm7250b_vadc ADC_USB_IN_V_16>,
+              <&pm7250b_vadc ADC_USB_IN_I>,
+              <&pm7250b_vadc ADC_CHG_TEMP>,
+              <&pm7250b_vadc ADC_DIE_TEMP>,
+              <&pm7250b_vadc ADC_AMUX_THM3_PU2>,
+              <&pm7250b_vadc ADC_SBUx>,
+              <&pm7250b_vadc ADC_VPH_PWR>,
+              <&pm8150l_vadc ADC_AMUX_THM2_PU3>;
+    io-channel-names = "mid_voltage",
+               "usb_in_voltage",
+               "usb_in_current",
+               "chg_temp",
+               "die_temp",
+               "conn_temp",
+               "sbux_res",
+               "vph_voltage",
+               "usb_id";
+    qcom,battery-data = <&lge_batterydata>;
+    qcom,step-charging-enable;
+    /delete-property/ qcom,sw-jeita-enable;
+    qcom,charger-temp-max = <800>;
+    qcom,smb-temp-max = <800>;
+    qcom,suspend-input-on-debug-batt;
+    qcom,fcc-stepping-enable;
+    qcom,chg-term-src = <1>;
+    qcom,chg-term-current-ma = <(-200)>;
+    lge,vconn-boost-en = <&pm7250b_gpios 11 GPIO_ACTIVE_HIGH>;
+    lge,prot-overchg-ent-dischg-off-uv = <10000>;
+    lge,prot-overchg-ent-chg-off-uv = <20000>;
+    lge,prot-overchg-rel-off-uv = <50000>;
+
+    lge-extension-usb {
+        lge,usbid-adc-range = <10>;		// ADC margin (pct unit)
+        lge,usbid-ldo-range = <10>;		// LDO margin (pct unit)
+        lge,usbid-pullup-mvol = <1800>;		// Pull-up voltage
+        lge,usbid-pullup-kohm = <400>;		// Pull-up resistance
+        lge,usbid-parallel-kohm = <(-1)>;	// Pull-up resistance
+
+        lge,feature-moisture-charging = <0>;
+    };
+};
+
+&pm7250b_qg {
+    status = "ok";
+    io-channels = <&pm7250b_vadc ADC_BAT_THERM_PU2>,
+              <&pm7250b_vadc ADC_BAT_ID_PU2>;
+    io-channel-names = "batt-therm",
+               "batt-id";
+    qcom,battery-data = <&lge_batterydata>;
+    qcom,qg-iterm-ma = <600>;
+    qcom,hold-soc-while-full;
+    qcom,linearize-soc;
+    qcom,cl-feedback-on;
+    qcom,cl-min-start-soc = <0>;
+};
+
+&qupv3_se4_i2c {
+	idtp9222-charger@61 {				// Slave driver and slave Address
+		compatible ="idt,p9222-charger";	// Manufacture, model
+		reg = <0x61>;				// Slave Address
+		status = "ok";
+
+		// one time calling of pinctrl.
+		// pinctrl-0 is the permanent configuraion of MSM GPIOs
+		pinctrl-names = "wlc_pinctrl";
+		pinctrl-0 = <&wlc_idtfault &wlc_detached>;
+
+		idt,gpio-idtfault = <&tlmm 25 0>;
+		idt,gpio-detached = <&tlmm 58 0>;
+		idt,gpio-disabled = <&pm7250b_gpios 3 0>;
+
+		// FOD parameters
+		idt,fod-epp = [
+			79 05
+		];
+
+		idt,configure-bppcurr = <750000>;
+		idt,configure-eppcurr = <800000>;
+		idt,configure-fullcurr = <500000>;
+		idt,configure-bppvolt = <6000000>;
+		idt,configure-eppvolt = <9000000>;
+		idt,configure-overheat = <450>;		// Temperature threshold to send EPT_BY_OVERTEMP
+		idt,configure-sysfs;			// For debug sysfs
+		idt,configure-dualdisplay;
+		idt,configure-charge-done;
 	};
 };
 

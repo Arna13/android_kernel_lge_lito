@@ -550,7 +550,7 @@ static void dw7914_poweron(int mode)
 			//DbgOut((DBL_ERROR, "I2CWrite failed to send SW_RESET_COMMAND\n"));
 		}
 		msleep(1);
-#if !defined(CONFIG_MACH_LGE)
+
 		// batch dw7914 configuration sequence
 		{
 			u8 command[] = {
@@ -562,36 +562,6 @@ static void dw7914_poweron(int mode)
 			struct i2c_msg msgs[sizeof(command)/2];
 			i2c_commands(dw7914->i2c, msgs, command, sizeof(command));
 		}
-#else
-		data = DW7914_MODE_RTP;
-		if (VIBE_S_SUCCESS != I2CWrite(DW7914_MODE, 1, &data))
-		{
-			//DbgOut((DBL_ERROR, "I2CWrite failed to send RTP_COMMAND\n"));
-		}
-		msleep(1);
-
-		data = DW7914_VD_CLAMP_mV(6720);
-		if (VIBE_S_SUCCESS != I2CWrite(DW7914_VD_CLAMP, 1, &data))
-		{
-			//DbgOut((DBL_ERROR, "I2CWrite failed to send RTP_COMMAND\n"));
-		}
-		msleep(1);
-
-		data = DW7914_BOOST_OPTION_BST_OFFSET_mV(400) | DW7914_BOOST_OPTION_BST_ILIMIT_35;
-		if (VIBE_S_SUCCESS != I2CWrite(DW7914_BOOST_OPTION, 1, &data))
-		{
-			//DbgOut((DBL_ERROR, "I2CWrite failed to send RTP_COMMAND\n"));
-		}
-		msleep(1);
-
-		data = CHOSEN_SAMPLE_FREQUENCY;
-		if (VIBE_S_SUCCESS != I2CWrite(DW7914_PWM_FREQ, 1, &data))
-		{
-			//DbgOut((DBL_ERROR, "I2CWrite failed to send RTP_COMMAND\n"));
-		}
-		msleep(1);
-
-#endif
 	}
 
 	else {

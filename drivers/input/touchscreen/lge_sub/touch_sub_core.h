@@ -47,9 +47,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/clk.h>
 #endif
-#if defined(CONFIG_LGE_TOUCH_SUB_DEX)
-#include <touch_sub_dex.h>
-#endif
 
 #define LGE_TOUCH_SUB_NAME		"lge_sub_touch"
 #define LGE_TOUCH_SUB_DRIVER_NAME	"lge_sub_touch_driver"
@@ -61,15 +58,13 @@
 #define ESWRESET		143
 #define EGLOBALRESET		144
 
-#define UEVENT_TIMEOUT		300
-
 enum TOUCH_DEBUG {
 	_NONE                      = 0,
 	BASE_INFO                 = (1U << 0),    /* 1 */
 	TRACE                     = (1U << 1),    /* 2 */
 	GET_DATA                  = (1U << 2),    /* 4 */
 	ABS                       = (1U << 3),    /* 8 */
-	DEX                       = (1U << 4),    /* 16 */
+	BUTTON                    = (1U << 4),    /* 16*/
 	FW_UPGRADE                = (1U << 5),    /* 32 */
 	GHOST                     = (1U << 6),    /* 64 */
 	IRQ_HANDLE                = (1U << 7),    /* 128 */
@@ -166,7 +161,6 @@ enum {
 
 enum {
 	FB_RESUME = 0,
-	FB_CHANGED,
 	FB_SUSPEND,
 };
 
@@ -267,7 +261,7 @@ enum {
 	MFTS_FOLDER,
 	MFTS_FLAT,
 	MFTS_CURVED,
-	MFTS_DS_FLAT,
+	MFTS_DS_FLAT = 6,
 };
 
 enum { /* Command lists */
@@ -367,13 +361,6 @@ enum {
 	APP_MENU,
 };
 
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-enum {
-	APP_FW_UPGRADE_IDLE = 0,
-	APP_FW_UPGRADE_GET_DATA,
-	APP_FW_UPGRADE_FLASHING,
-};
-#endif
 struct state_info {
 	atomic_t core;
 	atomic_t pm;
@@ -384,7 +371,6 @@ struct state_info {
 	atomic_t connect; /* connection using USB port */
 	atomic_t wireless; /* connection using wirelees_charger */
 	atomic_t earjack; /* connection using earjack */
-	atomic_t fm_radio; /* connection using fm radio */
 	atomic_t lockscreen;
 	atomic_t ime;
 	atomic_t film;
@@ -397,7 +383,6 @@ struct state_info {
 	atomic_t active_pen;
 	atomic_t film_mode; /* protection film in manufcturing */
 	atomic_t dualscreen;
-	atomic_t dex_mode;
 };
 
 struct touch_sub_driver {
@@ -410,9 +395,6 @@ struct touch_sub_driver {
 	int (*irq_handler)(struct device *dev);
 	int (*power)(struct device *dev, int power_mode);
 	int (*upgrade)(struct device *dev);
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-	int (*app_upgrade)(struct device *dev);
-#endif
 	int (*esd_recovery)(struct device *dev);
 	int (*lpwg)(struct device *dev,	u32 code, void *param);
 	int (*swipe_enable)(struct device *dev,	bool enable);
@@ -421,7 +403,7 @@ struct touch_sub_driver {
 	int (*register_sysfs)(struct device *dev);
 	int (*set)(struct device *dev, u32 cmd, void *input, void *output);
 	int (*get)(struct device *dev, u32 cmd, void *input, void *output);
-#ifdef CONFIG_LGE_TOUCH_SUB_PEN
+#ifdef CONFIG_LGE_TOUCH_PEN
 	int (*pen_func)(struct device *dev, void *touch_sub_core_data, void *data, int control);
 	int (*stop_pen_sensing)(struct device *dev, bool enable);
 #endif
@@ -445,7 +427,6 @@ struct touch_sub_operation_role {
 	bool hide_coordinate;
 	bool use_film_status;
 	bool use_active_pen_status;
-	bool use_dex_mode;
 };
 
 struct tci_info {
@@ -510,9 +491,6 @@ struct touch_sub_data {
 	u16 pressure;
 	/* finger, palm, pen, glove, hover */
 	u16 type;
-#if defined(CONFIG_LGE_TOUCH_SUB_DEX)
-	struct touch_dex_data dex_data;
-#endif
 };
 
 struct point {
@@ -553,14 +531,6 @@ struct perf_test_info {
 	u16 h_drag_y;
 };
 
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-struct app_fw_upgrade_info {
-	int status;
-	size_t max_data_size;
-	size_t offset;
-	u8 *data;
-};
-#endif
 struct touch_sub_core_data {
 	struct platform_device *pdev;
 
@@ -619,9 +589,6 @@ struct touch_sub_core_data {
 	struct workqueue_struct *wq;
 	struct delayed_work init_work;
 	struct delayed_work upgrade_work;
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-	struct delayed_work app_upgrade_work;
-#endif
 	struct delayed_work notify_work;
 	struct delayed_work fb_work;
 	struct delayed_work panel_reset_work;
@@ -668,15 +635,6 @@ struct touch_sub_core_data {
 	/* prediction filter off : 0, on : 1 */
 	int pred_filter;
 	u8 aes_mode;
-	struct completion uevent_complete;
-#if defined(CONFIG_LGE_TOUCH_SUB_DEX)
-	int dex_tcount;
-	struct touch_dex_ctrl touch_dex;
-	struct input_dev *input_dex;
-#endif
-#if defined(CONFIG_LGE_TOUCH_SUB_APP_FW_UPGRADE)
-	struct app_fw_upgrade_info app_fw_upgrade;
-#endif
 };
 
 #define PROPERTY_GPIO(np, string, target)				\
@@ -753,8 +711,7 @@ extern int touch_sub_init_sysfs_module(struct module_data *md_kobj, void *module
 extern void touch_sub_interrupt_control(struct device *dev, int on_off);
 extern void touch_sub_report_all_event(struct touch_sub_core_data *ts);
 extern void touch_sub_send_uevent(struct touch_sub_core_data *ts, int type);
-extern void touch_sub_report_cancel_event(struct touch_sub_core_data *ts);
-extern void touch_sub_restore_state(struct touch_sub_core_data *ts);
+
 #if defined(CONFIG_SUB_SECURE_TOUCH)
 extern void secure_touch_sub_notify(struct touch_sub_core_data *ts);
 extern void secure_touch_sub_init(struct touch_sub_core_data *ts);

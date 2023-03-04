@@ -59,7 +59,7 @@
 static struct pinctrl *egistec_pinctrl;
 static struct pinctrl_state *egistec_pin_state;
 
-struct wakeup_source *wakeup_source_fp;
+struct wakeup_source wakeup_source_fp;
 
 struct vreg_config {
 	char *name;
@@ -152,7 +152,7 @@ static int vreg_setup(struct egis_data *egis, const char *name, bool enable)
 
 				DEBUG_PRINT("[egis] disabled  regulator_force_disable  %s\n", name);
 			}
-			regulator_put(vreg);
+//			regulator_put(vreg);
 			egis->vreg[i] = NULL;
 
 /*			rc = regulator_set_voltage(vreg,0, 0);
@@ -238,7 +238,7 @@ static irqreturn_t fp_eint_func(int irq, void *dev_id)
 		mod_timer(&fps_ints.timer, jiffies + msecs_to_jiffies(fps_ints.detect_period));
 
 	fps_ints.int_count++;
-	__pm_wakeup_event(wakeup_source_fp, msecs_to_jiffies(1500));
+	__pm_wakeup_event(&wakeup_source_fp, msecs_to_jiffies(1500));
 	return IRQ_HANDLED;
 }
 
@@ -249,7 +249,7 @@ static irqreturn_t fp_eint_func_ll(int irq, void *dev_id)
 	DEBUG_PRINT("[egis] %s\n", __func__);
 	fps_ints.finger_on = 1;
 	wake_up_interruptible(&interrupt_waitq);
-	__pm_wakeup_event(wakeup_source_fp, msecs_to_jiffies(1500));
+	__pm_wakeup_event(&wakeup_source_fp, msecs_to_jiffies(1500));
 	return IRQ_RETVAL(IRQ_HANDLED);
 }
 
@@ -684,7 +684,7 @@ static int egis_remove(struct platform_device *pdev)
 	DEBUG_PRINT("[egis] %s (#%d)\n", __func__, __LINE__);
 	free_irq(gpio_irq, g_data);
 	del_timer_sync(&fps_ints.timer);
-	wakeup_source_unregister(wakeup_source_fp);
+	wakeup_source_destroy(&wakeup_source_fp);
 	request_irq_done = 0;
 	return 0;
 }
@@ -778,12 +778,7 @@ static int egis_probe(struct platform_device *pdev)
 
 	add_timer(&fps_ints.timer);
 
-	wakeup_source_fp = wakeup_source_register(dev, "et713_wakeup");
-
-	if (!wakeup_source_fp){
-	    DEBUG_PRINT("[egis] %s: wakeup_source_register failed\n", __func__);
-	    goto egis_probe_platformInit_failed;
-	}
+	wakeup_source_init(&wakeup_source_fp, "et713_wakeup");
 
 	DEBUG_PRINT("[egis] %s: initialize success %d\n", __func__, status);
 

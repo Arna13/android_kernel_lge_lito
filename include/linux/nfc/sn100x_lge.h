@@ -19,7 +19,7 @@
  *
  *  The original Work has been changed by NXP Semiconductors.
  *
- *  Copyright (C) 2013-2020 NXP Semiconductors
+ *  Copyright (C) 2013-2014 NXP Semiconductors
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,7 +38,6 @@
  ******************************************************************************/
 #ifndef _SN100X_H_
 #define _SN100X_H_
-#include <linux/miscdevice.h>
 #define PN544_MAGIC 0xE9
 
 #ifdef CONFIG_LGE_NFC_USE_PMIC
@@ -59,8 +58,6 @@
  * Only for SPI
  * level 1 = Enable power
  * level 0 = Disable power
- * This also be used to perform eSE cold reset when
- * argument value is 0x03
  */
 #define P61_SET_SPI_PWR    _IOW(PN544_MAGIC, 0x02, unsigned int) // LGE MODIFY long -> unsigned int
 
@@ -118,43 +115,17 @@
 */
 #define P544_FLAG_NFC_ON         0x01
 /*
-  FW_DNLD: NFC_ON and FW download is going on  (bit b1)
+  FW_DNLD: NFC_ON and FW download is going on
 */
 #define P544_FLAG_FW_DNLD        0x02
 /*
- * VEN_RESET: NFC_ON and FW download with VEN reset (bit b2)
+  FW_DNLD: NFC_ON and FW download is going on
 */
-#define P544_FLAG_NFC_VEN_RESET  0x04
+#define P544_FLAG_ESE_COLD_RESET_FROM_DRIVER        0x04
 /*
- * ESE_RESET: Starting of flag positions for eSE cold reset origin
+  FW_DNLD: NFC_ON and FW download with VEN reset
 */
-#define ESE_COLD_RESET_ORIGIN_FLAGS_POS     (4) //(bit b4)
-#define ESE_COLD_RESET_ORIGIN_NFC_FLAG_POS  (4) //(bit b4)
-/*
- * ESE_RESET: Mask for the flags used for Driver to driver cold reset
- * b6, b5, b4 :
- * 0   0   0 -> no request for ese_cold_reset
- * 0   0   1 -> ese_cold_reset requested from NFC driver
- * 0   1   0 -> ese_cold_reset requested from eSE driver
- * 1   0   0 -> ese_cold_reset requested from UWB driver
-*/
-#define MASK_ESE_COLD_RESET             (0x70)
-/*
- * ESE_RESET: Bit mask to check if ese_reset_guard timer is started (bit b7)
-*/
-#define MASK_ESE_COLD_RESET_GUARD_TIMER  (0x80)
-/*
- * ESE_RESET: Guard time to allow eSE cold reset from the driver
-*/
-#define ESE_COLD_RESET_GUARD_TIME        (3000) //3s
-/*
- * ESE_RESET: NCI command response timeout
-*/
-#define NCI_CMD_RSP_TIMEOUT              (2000) //2s
-/*
- * ESE_RESET: Guard time to reboot the JCOP
-*/
-#define ESE_COLD_RESET_REBOOT_GUARD_TIME   (50) //50ms
+#define P544_FLAG_NFC_VEN_RESET        0x08
 
 typedef enum p61_access_state{
     P61_STATE_INVALID = 0x0000,
@@ -218,70 +189,4 @@ struct hw_type_info {
     char data[20];
     int len;
 };
-
-#define LGE_NFC_FIX
-#ifdef LGE_NFC_FIX
-#define READ_IRQ_MODIFY // [NFC-6953]
-#define NFC_POWER_OFF   false
-#define NFC_POWER_ON    true
-#define NFC_TIMEOUT_MS  2000
-#undef ESE_PWR // LGE_ADD unused ESE_PWR_GPIO
-#undef NEXUS5x
-#undef ISO_RST // unused ISO_RST_GPIO
-#else // LGE_NFC_FIX
-#define ESE_PWR    1
-#define NEXUS5x    1
-#if NEXUS5x
-#undef ISO_RST
-#else
-#define ISO_RST
-#endif
-#endif // LGE_NFC_FIX
-
-
-struct pn544_dev    {
-    wait_queue_head_t   read_wq;
-    struct mutex        read_mutex;
-    struct i2c_client   *client;
-    struct miscdevice   pn544_device;
-    unsigned int        ven_gpio;
-    unsigned int        firm_gpio;
-    unsigned int        irq_gpio;
-#ifdef CONFIG_LGE_NFC_USE_PMIC
-    struct clk      *clk_cont;
-    struct clk      *clk_pin;
-#endif
-    struct mutex        p61_state_mutex; /* used to make p61_current_state flag secure */
-    p61_access_state_t  p61_current_state; /* stores the current P61 state */
-    bool                nfc_ven_enabled; /* stores the VEN pin state powered by Nfc */
-    bool                spi_ven_enabled; /* stores the VEN pin state powered by Spi */
-    bool                irq_enabled;
-    spinlock_t          irq_enabled_lock;
-    long                nfc_service_pid; /*used to signal the nfc the nfc service */
-    chip_pwr_scheme_t   chip_pwr_scheme;
-    unsigned int        secure_timer_cnt;
-    struct workqueue_struct *pSecureTimerCbWq;
-    struct work_struct wq_task;
-    /* This byte represents different flags used during eSE cold reset request from
-     * Driver to driver
-     * Bit value  Status           Remark
-     * b0 : 1  -> NFC_ON           Driver Open should set the flag
-     *      0     NFC_OFF          Driver release should reset this flag
-     * b1 : 1  -> FWDNLD           If FWDNLD is going on.
-     *      0     Normal operation
-     * b2 : 1 --> Ven reset has been requested
-     * b3 : reserved bit
-     * b6, b5, b4 :
-     * 0   0   0 -> no request for ese_cold_reset
-     * 0   0   1 -> ese_cold_reset requested from NFC driver
-     * 0   1   0 -> ese_cold_reset requested from eSE driver
-     * 0   1   1 -> ese_cold_reset requested from UWB driver
-     *              Remaining combinations: Reserved for future use.
-     *              These bits will be cleared once cold reset rsp is received.
-     * b7 : 1 -->   The ese_cold reset guard time has is running
-     *              It will be cleared by the Guard Timer Callback
-     * */
-    volatile uint8_t    state_flags;
-};
-
 #endif

@@ -16,6 +16,3 @@
 	qcom,board-id = <0x00050008 0>;
 };
 
-&qupv3_se9_i2c {
-  status = "disabled";
-};

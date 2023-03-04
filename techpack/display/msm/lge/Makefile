@@ -7,10 +7,6 @@ lge_display_common-objs += lge_ddic_ops.o
 lge_display_common-objs += lge_ddic_ops_sw43410.o
 lge_display_common-objs += lge_ddic_ops_sw43103.o
 lge_display_common-objs += lge_ddic_ops_sw49107.o
-lge_display_common-objs += lge_ddic_ops_hx83113a.o
-lge_display_common-objs += lge_ddic_ops_ft8756.o
-lge_display_common-objs += lge_ddic_ops_rm692A9_tovis.o
-lge_display_common-objs += lge_ddic_ops_rm692C9_tovis_md.o
 lge_display_common-objs += ambient/lge_backlight_ex.o
 lge_display_common-objs += ambient/lge_ambient.o
 lge_display_common-objs += cm/lge_color_manager.o
@@ -24,9 +20,6 @@ ifeq ($(CONFIG_LGE_DUAL_SCREEN),y)
 lge_display_common-objs += ds3/lge_backlight_ds3.o
 lge_display_common-objs += cover/lge_cover_ctrl.o
 lge_display_common-objs += cover/lge_cover_panel.o
-endif
-ifeq ($(CONFIG_LGE_SECONDARY_SCREEN),y)
-lge_display_common-objs += secondary/lge_backlight_secondary.o
 endif
 
 obj-$(CONFIG_LGE_DISPLAY_COMMON) += lge_display_common.o

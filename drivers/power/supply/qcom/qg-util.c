@@ -279,7 +279,7 @@ static bool is_dc_available(struct qpnp_qg *chip)
 
 	return true;
 }
-#ifdef CONFIG_USE_WIRELESS_CHARGING
+#ifdef CONFIG_CHARGER_IDTP9222
 bool is_wireless_available(struct qpnp_qg *chip)
 {
 	if (chip->wireless_psy)
@@ -316,7 +316,7 @@ bool is_dc_present(struct qpnp_qg *chip)
 	return pval.intval ? true : false;
 }
 
-#ifdef CONFIG_USE_WIRELESS_CHARGING
+#ifdef CONFIG_CHARGER_IDTP9222
 bool is_wireless_present(struct qpnp_qg *chip)
 {
 	union power_supply_propval pval = {0, };
@@ -332,32 +332,20 @@ bool is_wireless_present(struct qpnp_qg *chip)
 
 bool is_input_present(struct qpnp_qg *chip)
 {
-#ifdef CONFIG_USE_WIRELESS_CHARGING
+#ifdef CONFIG_CHARGER_IDTP9222
 	return is_usb_present(chip) || is_dc_present(chip) || is_wireless_present(chip);
 #else
 	return is_usb_present(chip) || is_dc_present(chip);
 #endif
 }
 
-bool is_parallel_available(struct qpnp_qg *chip)
+static bool is_parallel_available(struct qpnp_qg *chip)
 {
 	if (chip->parallel_psy)
 		return true;
 
 	chip->parallel_psy = power_supply_get_by_name("parallel");
 	if (!chip->parallel_psy)
-		return false;
-
-	return true;
-}
-
-bool is_cp_available(struct qpnp_qg *chip)
-{
-	if (chip->cp_psy)
-		return true;
-
-	chip->cp_psy = power_supply_get_by_name("charge_pump_master");
-	if (!chip->cp_psy)
 		return false;
 
 	return true;
@@ -370,9 +358,6 @@ bool is_parallel_enabled(struct qpnp_qg *chip)
 	if (is_parallel_available(chip)) {
 		power_supply_get_property(chip->parallel_psy,
 			POWER_SUPPLY_PROP_CHARGING_ENABLED, &pval);
-	} else if (is_cp_available(chip)) {
-		power_supply_get_property(chip->cp_psy,
-			POWER_SUPPLY_PROP_CP_ENABLE, &pval);
 	}
 
 	return pval.intval ? true : false;
@@ -417,11 +402,6 @@ int qg_get_battery_current(struct qpnp_qg *chip, int *ibat_ua)
 
 	if (chip->battery_missing) {
 		*ibat_ua = 0;
-		return 0;
-	}
-
-	if (chip->qg_mode == QG_V_MODE) {
-		*ibat_ua = chip->qg_v_ibat;
 		return 0;
 	}
 
@@ -503,14 +483,15 @@ int qg_get_ibat_avg(struct qpnp_qg *chip, int *ibat_ua)
 		return rc;
 	}
 
+#ifdef CONFIG_LGE_USB
 	if (last_ibat == FIFO_I_RESET_VAL) {
 		/* First FIFO is not complete, read instantaneous IBAT */
 		rc = qg_get_battery_current(chip, ibat_ua);
 		if (rc < 0)
 			pr_err("Failed to read inst. IBAT rc=%d\n", rc);
-
 		return rc;
 	}
+#endif
 
 	last_ibat = sign_extend32(last_ibat, 15);
 	*ibat_ua = qg_iraw_to_ua(chip, last_ibat);

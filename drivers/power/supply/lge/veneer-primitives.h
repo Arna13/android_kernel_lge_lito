@@ -144,10 +144,6 @@ enum veneer_feed_id {
     VENEER_FEED_POWER_NOW,
     VENEER_FEED_BSM_TTF,
 #endif
-	VENEER_FEED_BATT_PSY_IBAT_NOW,
-	VENEER_FEED_USB_PRESENT,
-	VENEER_FEED_WIRELESS_PRESENT,
-	VENEER_FEED_HVT_SOC_RESCALE,
 
     VENEER_FEED_MAX,
 };
@@ -263,7 +259,6 @@ enum charging_supplier { // Exclusive charging types
 
 	CHARGING_SUPPLY_WIRELESS_5W,
 	CHARGING_SUPPLY_WIRELESS_9W,
-	CHARGING_SUPPLY_WIRELESS_15W,
 	CHARGING_SUPPLY_MAX,
 };
 
@@ -354,7 +349,6 @@ const char* charger_name(enum charging_supplier charger)
 
 	case CHARGING_SUPPLY_WIRELESS_5W :	return "W5W";
 	case CHARGING_SUPPLY_WIRELESS_9W :	return "W9W";
-	case CHARGING_SUPPLY_WIRELESS_15W :	return "W15W";
 
 	default :
 		break;
@@ -490,13 +484,11 @@ void protection_usbio_destroy(void);
 bool protection_usbio_create(struct device_node* dnode);
 #endif
 
-#if defined(CONFIG_LGE_PM_ACTM) || defined(CONFIG_LGE_PM_ACTM_V2)
 void actm_trigger(void);
 void actm_destroy(void);
 bool actm_create(struct device_node* dnode,
 	int (*get_veneer_param)(int id, int *value),
 	int (*set_veneer_param)(int id, int value));
-#endif
 
 enum veneer_bootmode unified_bootmode_type(void);
 enum charger_usbid unified_bootmode_usbid(void);

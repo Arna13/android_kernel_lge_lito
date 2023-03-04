@@ -436,8 +436,6 @@ Optional properties:
 				order of <real_time>, and <non_real_time>.
 - qcom,sde-qos-cpu-mask:	A u32 value indicating desired PM QoS CPU affine mask.
 - qcom,sde-qos-cpu-dma-latency:	A u32 value indicating desired PM QoS CPU DMA latency in usec.
-- qcom,sde-qos-cpu-irq-latency:	A u32 value indicating desired PM QoS CPU irq latency in usec
-				for 120 fps based targets.
 - qcom,sde-inline-rot-xin:	An integer array of xin-ids related to inline
 				rotation.
 - qcom,sde-inline-rot-xin-type:	A string array indicating the type of xin,
@@ -480,8 +478,6 @@ Optional properties:
 				-- qcom,sde-limit-cases: different usecases to be considered
 				-- qcom,sde-limit-ids: respective ids for the above usecases
 				-- qcom,sde-limit-values: usecase and value for different combinations
-- qcom,sde-mixer-stage-base-layer: A boolean property to indicate if a layer can be staged on base
-				stage instead of border fill
 
 Bus Scaling Subnodes:
 - qcom,sde-reg-bus:		Property to provide Bus scaling for register access for

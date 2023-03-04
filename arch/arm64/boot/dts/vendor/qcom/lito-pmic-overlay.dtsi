@@ -202,12 +202,11 @@
 		qcom,hw-settle-time = <200>;
 	};
 
-	/* LGE CHANGE : Remove camera_flash_therm */
-	/*camera_flash_therm@55 {
+	camera_flash_therm@55 {
 		reg = <ADC_GPIO4_PU2>;
 		qcom,ratiometric;
 		qcom,hw-settle-time = <200>;
-	};*/
+	};
 };
 
 &pm8150_adc_tm {

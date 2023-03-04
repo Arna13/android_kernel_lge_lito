@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2009-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2009-2019, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
@@ -299,9 +299,6 @@ static struct msm_soc_info cpu_of_id[] = {
 	[305] = {MSM_CPU_8996, "MSM8996pro"},
 	[312] = {MSM_CPU_8996, "APQ8096pro"},
 
-	/* SDM660 ID */
-	[317] = {MSM_CPU_SDM660, "SDM660"},
-
 	/* sm8150 ID */
 	[339] = {MSM_CPU_SM8150, "SM8150"},
 
@@ -325,14 +322,9 @@ static struct msm_soc_info cpu_of_id[] = {
 
 	/* kona ID */
 	[356] = {MSM_CPU_KONA, "KONA"},
-	[455] = {MSM_CPU_KONA, "KONA"},
 
 	/* Lito ID */
 	[400] = {MSM_CPU_LITO, "LITO"},
-	[440] = {MSM_CPU_LITO, "LITO"},
-
-	/* Orchid ID */
-	[476] = {MSM_CPU_ORCHID, "ORCHID"},
 
 	/* Bengal ID */
 	[417] = {MSM_CPU_BENGAL, "BENGAL"},
@@ -340,25 +332,12 @@ static struct msm_soc_info cpu_of_id[] = {
 
 	/* Lagoon ID */
 	[434] = {MSM_CPU_LAGOON, "LAGOON"},
-	[459] = {MSM_CPU_LAGOON, "LAGOON"},
 
 	/* Bengalp ID */
 	[445] = {MSM_CPU_BENGALP, "BENGALP"},
-	[420] = {MSM_CPU_BENGALP, "BENGALP"},
 
 	/* Scuba ID */
 	[441] = {MSM_CPU_SCUBA, "SCUBA"},
-	[471] = {MSM_CPU_SCUBA, "SCUBA"},
-
-	/* Scuba IIOT  ID */
-	[473] = {MSM_CPU_SCUBAIOT, "SCUBAIIOT"},
-	[474] = {MSM_CPU_SCUBAPIOT, "SCUBAPIIOT"},
-
-	/* BENGAL-IOT ID */
-	[469] = {MSM_CPU_BENGAL_IOT, "BENGAL-IOT"},
-
-	/* BENGALP-IOT ID */
-	[470] = {MSM_CPU_BENGALP_IOT, "BENGALP-IOT"},
 
 	/* Uninitialized IDs are not known to run Linux.
 	 * MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
@@ -1127,23 +1106,7 @@ msm_get_hw_subrev(struct device *dev,
 #endif
 
 }
-#ifdef CONFIG_LGE_ONE_BINARY_SKU
-    static ssize_t
-msm_get_sku_carrier(struct device *dev,
-	struct device_attribute *attr,char *buf)
-{
-	enum lge_sku_carrier_type  sku_carrierid = lge_get_sku_carrier();
-
-	pr_err("sku_carrier called\n");
-	pr_err("sku_carrier id:%d\n", sku_carrierid);
-	pr_err("sku_carrier : %s",lge_get_sku_carrier_str());
-
-	return snprintf(buf, PAGE_SIZE, "%-.32s\n",lge_get_sku_carrier_str());
-}
 #endif
-#endif
-
-
 
 static struct device_attribute msm_soc_attr_raw_version =
 	__ATTR(raw_version, 0444, msm_get_raw_version,  NULL);
@@ -1260,10 +1223,6 @@ static struct device_attribute msm_soc_attr_hw_rev =
 	__ATTR(hw_rev, S_IRUGO, msm_get_hw_rev, NULL);
 static struct device_attribute msm_soc_attr_hw_subrev =
 	__ATTR(hw_subrev, S_IRUGO, msm_get_hw_subrev, NULL);
-#ifdef CONFIG_LGE_ONE_BINARY_SKU
-static struct device_attribute msm_soc_attr_sku_carrier =
-	__ATTR(sku_carrier, S_IRUGO, msm_get_sku_carrier, NULL);
-#endif
 #endif
 
 static void * __init setup_dummy_socinfo(void)
@@ -1284,10 +1243,6 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 310;
 		strlcpy(dummy_socinfo.build_id, "msm8996-auto - ",
 		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_sdm660()) {
-		dummy_socinfo.id = 317;
-		strlcpy(dummy_socinfo.build_id, "sdm660 - ",
-		sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_sm8150()) {
 		dummy_socinfo.id = 339;
 		strlcpy(dummy_socinfo.build_id, "sm8150 - ",
@@ -1304,10 +1259,6 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 400;
 		strlcpy(dummy_socinfo.build_id, "lito - ",
 		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_orchid()) {
-		dummy_socinfo.id = 476;
-		strlcpy(dummy_socinfo.build_id, "orchid - ",
-		sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_bengal()) {
 		dummy_socinfo.id = 417;
 		strlcpy(dummy_socinfo.build_id, "bengal - ",
@@ -1323,14 +1274,6 @@ static void * __init setup_dummy_socinfo(void)
 	} else if (early_machine_is_scuba()) {
 		dummy_socinfo.id = 441;
 		strlcpy(dummy_socinfo.build_id, "scuba - ",
-		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_scubaiot()) {
-		dummy_socinfo.id = 473;
-		strlcpy(dummy_socinfo.build_id, "scubaiot - ",
-		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_scubapiot()) {
-		dummy_socinfo.id = 474;
-		strlcpy(dummy_socinfo.build_id, "scubapiot - ",
 		sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_sdmshrike()) {
 		dummy_socinfo.id = 340;
@@ -1351,14 +1294,6 @@ static void * __init setup_dummy_socinfo(void)
 	} else if (early_machine_is_sdmmagpie()) {
 		dummy_socinfo.id = 365;
 		strlcpy(dummy_socinfo.build_id, "sdmmagpie - ",
-		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_bengal_iot()) {
-		dummy_socinfo.id = 469;
-		strlcpy(dummy_socinfo.build_id, "bengal-iot - ",
-		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_bengalp_iot()) {
-		dummy_socinfo.id = 470;
-		strlcpy(dummy_socinfo.build_id, "bengalp-iot - ",
 		sizeof(dummy_socinfo.build_id));
 	} else
 		strlcat(dummy_socinfo.build_id, "Dummy socinfo",
@@ -1441,10 +1376,6 @@ static void __init populate_soc_sysfs_files(struct device *msm_soc_device)
 					&msm_soc_attr_hw_rev);
 		device_create_file(msm_soc_device,
 					&msm_soc_attr_hw_subrev);
-#ifdef CONFIG_LGE_ONE_BINARY_SKU
-		device_create_file(msm_soc_device,
-					&msm_soc_attr_sku_carrier);
-#endif
 #endif
 		break;
 	default:

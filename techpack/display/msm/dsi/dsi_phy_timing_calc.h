@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _DSI_PHY_TIMING_CALC_H_
@@ -81,8 +81,7 @@ struct phy_clk_params {
  * Various Ops needed for auto-calculation of DSI PHY timing parameters.
  */
 struct phy_timing_ops {
-	void (*get_default_phy_params)(struct phy_clk_params *params,
-				       u32 phy_type);
+	void (*get_default_phy_params)(struct phy_clk_params *params);
 
 	int32_t (*calc_clk_zero)(s64 rec_temp1, s64 mult);
 
@@ -97,15 +96,14 @@ struct phy_timing_ops {
 			struct phy_timing_desc *desc);
 
 	void (*update_timing_params)(struct dsi_phy_per_lane_cfgs *timing,
-		struct phy_timing_desc *desc, u32 phy_type);
+		struct phy_timing_desc *desc);
 };
 
 #define roundup64(x, y) \
 	({ u64 _tmp = (x)+(y)-1; do_div(_tmp, y); _tmp * y; })
 
 /* DSI PHY timing functions for 14nm */
-void dsi_phy_hw_v2_0_get_default_phy_params(struct phy_clk_params *params,
-					    u32 phy_type);
+void dsi_phy_hw_v2_0_get_default_phy_params(struct phy_clk_params *params);
 
 int32_t dsi_phy_hw_v2_0_calc_clk_zero(s64 rec_temp1, s64 mult);
 
@@ -120,11 +118,10 @@ void dsi_phy_hw_v2_0_calc_hs_trail(struct phy_clk_params *clk_params,
 		struct phy_timing_desc *desc);
 
 void dsi_phy_hw_v2_0_update_timing_params(struct dsi_phy_per_lane_cfgs *timing,
-		struct phy_timing_desc *desc, u32 phy_type);
+		struct phy_timing_desc *desc);
 
 /* DSI PHY timing functions for 10nm */
-void dsi_phy_hw_v3_0_get_default_phy_params(struct phy_clk_params *params,
-					    u32 phy_type);
+void dsi_phy_hw_v3_0_get_default_phy_params(struct phy_clk_params *params);
 
 int32_t dsi_phy_hw_v3_0_calc_clk_zero(s64 rec_temp1, s64 mult);
 
@@ -139,11 +136,10 @@ void dsi_phy_hw_v3_0_calc_hs_trail(struct phy_clk_params *clk_params,
 		struct phy_timing_desc *desc);
 
 void dsi_phy_hw_v3_0_update_timing_params(struct dsi_phy_per_lane_cfgs *timing,
-		struct phy_timing_desc *desc, u32 phy_type);
+		struct phy_timing_desc *desc);
 
 /* DSI PHY timing functions for 7nm */
-void dsi_phy_hw_v4_0_get_default_phy_params(struct phy_clk_params *params,
-					    u32 phy_type);
+void dsi_phy_hw_v4_0_get_default_phy_params(struct phy_clk_params *params);
 
 int32_t dsi_phy_hw_v4_0_calc_clk_zero(s64 rec_temp1, s64 mult);
 
@@ -158,6 +154,6 @@ void dsi_phy_hw_v4_0_calc_hs_trail(struct phy_clk_params *clk_params,
 		struct phy_timing_desc *desc);
 
 void dsi_phy_hw_v4_0_update_timing_params(struct dsi_phy_per_lane_cfgs *timing,
-		struct phy_timing_desc *desc, u32 phy_type);
+		struct phy_timing_desc *desc);
 
 #endif /* _DSI_PHY_TIMING_CALC_H_ */

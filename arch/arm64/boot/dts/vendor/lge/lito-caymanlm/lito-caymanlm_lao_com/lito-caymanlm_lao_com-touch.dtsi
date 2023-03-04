@@ -13,6 +13,9 @@
 
 	sw42902@28 {
 		status = "ok";
+
+		fw_image = "touch/caymanlm/B3W68CAYMAN_3_28.img",
+			"touch/caymanlm/B3W68DS3_0_28.img";
 	};
 
 	sw42000@28 {

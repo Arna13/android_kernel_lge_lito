@@ -9,57 +9,22 @@
 /************************
  * OVERRIDDEN CALLBACKS *
  ************************/
-
-#define OTG_WLC_VOTER	"OTG_WLC_VOTER"
 int override_vbus_regulator_enable(struct regulator_dev *rdev) {
 	struct smb_charger *chg = rdev_get_drvdata(rdev);
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
 	int ret = 0;
-
-	if (ext_chg->enable_concurrency_otg_wlc) {
-		smblib_err(chg, "boost ic on\n");
-
-		smblib_write(chg, USBIN_ADAPTER_ALLOW_CFG_REG, USBIN_ADAPTER_ALLOW_12V);
-		vote(chg->usb_icl_votable, OTG_WLC_VOTER, true, 0);
-
-		gpiod_set_value(ext_chg->otg_wlc_en_gpio, 1);
-		usleep_range(100, 110);
-		gpiod_set_value(ext_chg->otg_wlc_on_gpio, 1);
-
-		ext_chg->concurrency_otg_wlc = true;
-	} else {
-		smblib_err(chg, "regulator on\n");
-
-		ret = smblib_vbus_regulator_enable(rdev);
-		wa_control_vbus2_regulator(chg, true);
-	}
+	smblib_err(chg, "regulator on\n");
+	ret = smblib_vbus_regulator_enable(rdev);
+	wa_control_vbus2_regulator(chg, true);
 
 	return ret;
 }
 
 int override_vbus_regulator_disable(struct regulator_dev *rdev) {
 	struct smb_charger *chg = rdev_get_drvdata(rdev);
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
 	int ret = 0;
-
-	if (ext_chg->enable_concurrency_otg_wlc) {
-		smblib_err(chg, "boost ic off\n");
-
-		gpiod_set_value(ext_chg->otg_wlc_en_gpio, 0);
-		usleep_range(100, 110);
-		gpiod_set_value(ext_chg->otg_wlc_on_gpio, 0);
-
-		vote(chg->usb_icl_votable, OTG_WLC_VOTER, false, 0);
-		smblib_write(chg, USBIN_ADAPTER_ALLOW_CFG_REG,
-				USBIN_ADAPTER_ALLOW_5V_OR_9V_TO_12V);
-
-		ext_chg->concurrency_otg_wlc = false;
-	} else {
-		smblib_err(chg, "regulator off\n");
-
-		wa_control_vbus2_regulator(chg, false);
-		ret = smblib_vbus_regulator_disable(rdev);
-	}
+	smblib_err(chg, "regulator off\n");
+	wa_control_vbus2_regulator(chg, false);
+	ret = smblib_vbus_regulator_disable(rdev);
 
 	return ret;
 }
@@ -84,17 +49,6 @@ int override_vconn_regulator_disable(struct regulator_dev *rdev) {
 	gpiod_set_value(ext_chg->vconn_boost_en_gpio, 0);
 
 	return ret;
-}
-
-irqreturn_t override_otg_oc_hiccup_irq_handler(int irq, void *data)
-{
-	struct smb_irq_data *irq_data = data;
-	struct smb_charger *chg = irq_data->parent_data;
-
-	wa_disable_otg_hiccup_trigger(chg);
-
-	// Call original here
-	return default_irq_handler(irq, data);
 }
 
 irqreturn_t override_otg_fault_irq_handler(int irq, void *data)
@@ -142,11 +96,6 @@ irqreturn_t override_usb_plugin_irq_handler(int irq, void *data)
 	struct smb_charger *chg = irq_data->parent_data;
 	struct ext_smb_charger *ext_chg = chg->ext_chg;
 	irqreturn_t rc = IRQ_NONE;
-
-	if (ext_chg->concurrency_otg_wlc) {
-		smblib_dbg(chg, PR_MISC, "Skip plugin irq handler!\n");
-		return rc;
-	}
 
 	// Call original here
 	rc = usb_plugin_irq_handler(irq, data);
@@ -235,10 +184,6 @@ irqreturn_t override_typec_state_change_irq_handler(int irq, void *data)
 		else
 			smblib_handle_rp_change(chg, chg->typec_mode);
 	}
-
-	if (ext_chg->concurrency_otg_wlc
-		&& chg->typec_mode == POWER_SUPPLY_TYPEC_NONE)
-		override_vbus_regulator_disable(chg->vbus_vreg->rdev);
 
 	return rc;
 }
@@ -346,33 +291,13 @@ irqreturn_t override_typec_vconn_oc_irq_handler(int irq, void *data)
 	return default_irq_handler(irq, data);
 }
 
-#define AC_MISSING_DETECTION	BIT(10)
 irqreturn_t override_dcin_uv_irq_handler(int irq, void *data)
 {
 	struct smb_irq_data *irq_data = data;
 	struct smb_charger *chg = irq_data->parent_data;
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-	union power_supply_propval pval = { 0, };
 	irqreturn_t rc = IRQ_NONE;
 
 	wa_dcin_rerun_aicl_clear(chg);
-
-	if (ext_chg->enable_concurrency_otg_wlc) {
-		if (!chg->wls_psy) {
-			chg->wls_psy = power_supply_get_by_name("wireless");
-			if (!chg->wls_psy) {
-				smblib_err(chg, "'wls_psy' is no device\n");
-				return rc;
-			}
-		}
-		power_supply_get_property(chg->wls_psy, POWER_SUPPLY_PROP_DC_RESET, &pval);
-		if (pval.intval & AC_MISSING_DETECTION) {
-			smblib_dbg(chg, PR_WLS, "Wireless Missing Detection!\n");
-			power_supply_set_property(chg->dc_psy, POWER_SUPPLY_PROP_DC_RESET, &pval);
-			return rc;
-		}
-	}
-
 	rc = dcin_uv_irq_handler(irq, data);
 	wa_dcin_rerun_aicl_trigger(chg);
 
@@ -383,7 +308,6 @@ irqreturn_t override_dc_plugin_irq_handler(int irq, void *data)
 {
 	struct smb_irq_data *irq_data = data;
 	struct smb_charger *chg = irq_data->parent_data;
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
 	union power_supply_propval pval = { 0, };
 	int rc, input_present;
 	bool dcin_present, vbus_present;
@@ -407,8 +331,6 @@ irqreturn_t override_dc_plugin_irq_handler(int irq, void *data)
 	if (!dcin_present) {
 		vote(chg->fcc_votable, WLS_PL_CHARGING_VOTER, false, 0);
 		vote(chg->dc_suspend_votable, CHG_TERMINATION_VOTER, false, 0);
-
-		chg->dcin_aicl_done = false;
 	} else {
 		/* Reset DCIN ICL to 500mA */
 		mutex_lock(&chg->dcin_aicl_lock);
@@ -417,27 +339,9 @@ irqreturn_t override_dc_plugin_irq_handler(int irq, void *data)
 		if (rc < 0)
 			return IRQ_HANDLED;
 
-#ifdef CONFIG_CHARGER_IDTP9222_V2
-		vote(chg->fcc_votable, WLS_PL_CHARGING_VOTER, true, 3600000);
-#else
-		vote(chg->fcc_votable, WLS_PL_CHARGING_VOTER, true, 2400000);
-#endif
-		if (chg->sec_cp_present) {
-			/* Not used - Wireless cp charging */
-			rc = smblib_select_sec_charger(chg,
-				POWER_SUPPLY_CHARGER_SEC_NONE,
-				POWER_SUPPLY_CP_NONE, false);
-		}
+		vote(chg->fcc_votable, WLS_PL_CHARGING_VOTER, true, 2000000);
 		schedule_work(&chg->dcin_aicl_work);
 	}
-
-	/*
-	 * Vote for 1500mA FCC upon WLS detach and remove vote upon attach if
-	 * FCC stepper is enabled.
-	 */
-	if (chg->fcc_stepper_enable && !(vbus_present && !ext_chg->concurrency_otg_wlc))
-		vote(chg->fcc_votable, FCC_STEPPER_VOTER, !dcin_present,
-				dcin_present ? 0 : 1500000);
 
 	if (chg->dc_psy)
 		power_supply_changed(chg->dc_psy);
@@ -456,25 +360,7 @@ irqreturn_t override_dcin_irq_handler(int irq, void *data)
 	if (!strcmp(irq_data->name, "dcin-vashdn"))
 		wa_recovery_vashdn_wireless_trigger(chg);
 
-	if (!strcmp(irq_data->name, "dcin-pon"))
-		wa_avoid_fod_status_trigger(chg);
-
-	smblib_dbg(chg, PR_INTERRUPT, "IRQ: %s\n", irq_data->name);
-
 	return IRQ_HANDLED;
-}
-
-void extension_icl_change(struct smb_charger *chg, int settled_ua)
-{
-	struct ext_smb_charger *ext_chg = chg->ext_chg;
-	struct power_supply* veneer = power_supply_get_by_name("veneer");
-	union power_supply_propval aicl = { .intval = settled_ua, };
-
-	ext_chg->settled_ua = settled_ua;
-	if (veneer) {
-		power_supply_set_property(veneer, POWER_SUPPLY_PROP_INPUT_CURRENT_SETTLED, &aicl);
-		power_supply_put(veneer);
-	}
 }
 
 void extension_typec_src_removal(struct smb_charger *chg)
@@ -505,8 +391,7 @@ static void usb_plugin_work(struct work_struct *work)
 	vbus = !smblib_get_prop_usb_present(chg, &val) ? !!val.intval : false;
 	raw_notifier_call_chain(&ext_chg->usb_plugin_notifier,
 			vbus, chg);
-	if (!vbus)
-		ext_chg->settled_ua = 0;
+
 }
 
 static void usb_source_change_work(struct work_struct *work)

@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright (C) 2012-2020 NXP Semiconductors
+ *  Copyright (C) 2012-2019 NXP Semiconductors
  *   *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -47,27 +47,25 @@
 #define LGE_NFC_FIX
 #ifdef LGE_NFC_FIX
 #include <linux/nfc/p73.h>
-#include <linux/nfc/cold_reset.h>
 #include <linux/nfc/sn100x_lge.h>
 #else
 #include "p73.h"
-#include "../pn553-i2c/cold_reset.h"
 #include "../pn553-i2c/pn553.h"
 #endif
 
 extern long  pn544_dev_ioctl(struct file *filp, unsigned int cmd,
         unsigned long arg);
-extern int ese_cold_reset(ese_cold_reset_origin_t src);
-extern int do_reset_protection(bool type);
+extern long p61_cold_reset(void);
 
 #define DRAGON_P61 1
 
 /* Device driver's configuration macro */
 /* Macro to configure poll/interrupt based req*/
-#undef P61_IRQ_ENABLE
 #ifdef LGE_NFC_FIX
-#undef P61_GPIO_ENABLE // LGE_ADD
+#undef P61_IRQ_ENABLE
+#undef P61_GPIO_ENABLE
 #else
+#define P61_IRQ_ENABLE
 #define P61_GPIO_ENABLE
 #endif
 
@@ -247,25 +245,6 @@ static void p61_stop_throughput_measurement(unsigned int type, int no_of_bytes)
 
 /**
  * \ingroup spi_driver
- * \brief Will be called on device close to release resources
- *
- * \param[in]       struct inode *
- * \param[in]       struct file *
- *
- * \retval 0 if ok.
- *
-*/
-static int ese_dev_release(struct inode *inode, struct file *filp) {
-    struct p61_dev *p61_dev = NULL;
-    printk(KERN_ALERT "Enter %s: ESE driver release \n", __func__);
-    p61_dev = filp->private_data;
-    do_reset_protection(false);
-    printk(KERN_ALERT "Exit %s: ESE driver release \n", __func__);
-    return 0;
-}
-
-/**
- * \ingroup spi_driver
  * \brief Called from SPI LibEse to initilaize the P61 device
  *
  * \param[in]       struct inode *
@@ -405,14 +384,7 @@ static long p61_dev_ioctl(struct file *filp, unsigned int cmd,
         P61_DBG_MSG(KERN_ALERT " P61_INHIBIT_PWR_CNTRL ret: %d exit", ret);
     break;
     case ESE_PERFORM_COLD_RESET:
-        P61_DBG_MSG(KERN_ALERT " ESE_PERFORM_COLD_RESET: enter");
-        ret = ese_cold_reset(ESE_COLD_RESET_SOURCE_SPI);
-        P61_DBG_MSG(KERN_ALERT " P61_INHIBIT_PWR_CNTRL ret: %d exit", ret);
-    break;
-    case PERFORM_RESET_PROTECTION:
-        P61_DBG_MSG(KERN_ALERT " PERFORM_RESET_PROTECTION: enter");
-        ret = do_reset_protection((arg == 1 ? true : false));
-        P61_DBG_MSG(KERN_ALERT " PERFORM_RESET_PROTECTION ret: %d exit", ret);
+        ret = p61_cold_reset();
     break;
     default:
         P61_DBG_MSG(KERN_ALERT " Error case");
@@ -836,7 +808,6 @@ static const struct file_operations p61_dev_fops = {
         .read = p61_dev_read,
         .write = p61_dev_write,
         .open = p61_dev_open,
-        .release = ese_dev_release,
         .unlocked_ioctl = p61_dev_ioctl,
         .compat_ioctl = p61_dev_ioctl,
 };
@@ -853,11 +824,11 @@ static int p61_parse_dt(struct device *dev,
         data->rst_gpio = of_get_named_gpio(np, "nxp,p61-rst", 0);
         if ((!gpio_is_valid(data->rst_gpio)))
                 return -EINVAL;
-    pr_info("%s p61_parse_dt end, errorno = %d\n", __func__,errorno);
-    return errorno;
+  pr_info("%s p61_parse_dt end, errorno = %d\n", __func__,errorno);
+  return errorno;
 
 #endif
-    pr_info("%s p61_parse_dt end:\n", __func__);
+  pr_info("%s p61_parse_dt end:\n", __func__);
     return 0;
 }
 #endif
@@ -983,7 +954,7 @@ static int p61_probe(struct spi_device *spi)
         goto err_exit1;
     }
     p61_disable_irq(p61_dev);
-#else // LGE_ADD
+#else
     P61_DBG_MSG(" %s P61_IRQ_ENABLE not Enabled \n", __FUNCTION__);
 #endif
 
@@ -1110,7 +1081,6 @@ static void __exit p61_dev_exit(void)
 module_exit( p61_dev_exit);
 
 MODULE_AUTHOR("BHUPENDRA PAWAR");
-MODULE_ALIAS("spi:p61");
 MODULE_DESCRIPTION("NXP P61 SPI driver");
 MODULE_LICENSE("GPL");
 

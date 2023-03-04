@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -119,9 +119,7 @@ static void process_one_prefetch(struct ion_heap *sys_heap,
 		goto out;
 
 	ret = ion_hyp_assign_sg(buffer.sg_table, &vmid, 1, true);
-	if (ret == -EADDRNOTAVAIL)
-		goto out1;
-	else if (ret < 0)
+	if (ret)
 		goto out;
 
 	/* Now free it to the secure heap */
@@ -130,12 +128,6 @@ static void process_one_prefetch(struct ion_heap *sys_heap,
 
 out:
 	sys_heap->ops->free(&buffer);
-out1:
-	/*
-	 * The security state of the pages is unknown after a failure;
-	 * They can neither be added back to the secure pool nor buddy system.
-	 */
-	return;
 }
 
 /*
@@ -396,7 +388,7 @@ struct page *split_page_from_secure_pool(struct ion_system_heap *heap,
 #endif
 	int j;
 	struct page *page;
-	unsigned int order = 0;
+	unsigned int order;
 
 	mutex_lock(&heap->split_page_mutex);
 

@@ -37,9 +37,6 @@ static int nfc_state = 0;
 static int wmc_state = 0;
 
 /* global variables should be updated from dts */
-#if defined (CONFIG_MACH_LITO_ACELM)
-static uint32_t gpio_fault = 0;    // DRV8838_SLEEP_N_Pin, MSM GPIO 68
-#endif
 static int gpio_sleep_n = -1;  // DRV8838_SLEEP_N_Pin
 
 static unsigned int command_type = 0; // send_commnad (odd: once, even: repeat)
@@ -73,10 +70,6 @@ static ssize_t lge_store_mme_command (struct device *dev,
                 break;
             }
 
-#if defined (CONFIG_MACH_LITO_ACELM)
-            // Set WMC fault to high
-            gpio_set_value(gpio_fault, 1);
-#endif
             // Set WMC n_sleep to high
             gpio_set_value(gpio_sleep_n, 1);
             wmc_state = 1;
@@ -96,10 +89,6 @@ static ssize_t lge_store_mme_command (struct device *dev,
                 break;
             }
 
-#if defined (CONFIG_MACH_LITO_ACELM)
-            // Set WMC fault to low
-            gpio_set_value(gpio_fault, 0);
-#endif
             // Set WMC n_sleep to low
             gpio_set_value(gpio_sleep_n, 0);
             wmc_state = 0;
@@ -108,10 +97,6 @@ static ssize_t lge_store_mme_command (struct device *dev,
         case CMD_MME_NFC_ON:
             pr_err("[MME] CMD_MME_NFC_ON\n");
 
-#if defined (CONFIG_MACH_LITO_ACELM)
-            // Set WMC fault to low
-            gpio_set_value(gpio_fault, 0);
-#endif
             // Set WMC n_sleep to low
             gpio_set_value(gpio_sleep_n, 0);
             wmc_state = 0;
@@ -151,23 +136,12 @@ static int mme_gpio_init(struct device *dev)
 {
     int ret = 0;
 
-#if defined (CONFIG_MACH_LITO_ACELM)
-    gpio_fault = of_get_named_gpio(dev->of_node, "lge-mme,gpio_fault", 0);
-#endif
     gpio_sleep_n = of_get_named_gpio(dev->of_node, "lge-mme,gpio_sleep_n", 0);
 
-#if defined (CONFIG_MACH_LITO_ACELM)
-    pr_err("[MME] %s: gpio_sleep_n=%d, gpio_fault=%d\n",
-            __func__, gpio_sleep_n, gpio_fault);
-#else
     pr_err("[MME] %s: gpio_sleep_n=%d\n",
             __func__, gpio_sleep_n);
-#endif
 
     /* request gpio and set gpio direction*/
-#if defined (CONFIG_MACH_LITO_ACELM)
-    ret = gpio_request_one(gpio_fault, GPIOF_OUT_INIT_LOW, "lge-mme,gpio_fault");
-#endif
     ret = gpio_request_one(gpio_sleep_n, GPIOF_OUT_INIT_LOW, "lge-mme,gpio_sleep_n");
 
     pr_err("[MME] gpio_request_one: nSleep GPIO=%d\n", gpio_sleep_n);

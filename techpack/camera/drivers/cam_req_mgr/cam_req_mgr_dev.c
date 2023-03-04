@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -116,7 +116,6 @@ static int cam_req_mgr_open(struct file *filep)
 	spin_unlock_bh(&g_dev.cam_eventq_lock);
 
 	g_dev.open_cnt++;
-	CAM_DBG(CAM_CRM, " CRM open cnt %d", g_dev.open_cnt);
 	rc = cam_mem_mgr_init();
 	if (rc) {
 		g_dev.open_cnt--;
@@ -158,19 +157,11 @@ static int cam_req_mgr_close(struct file *filep)
 
 	CAM_WARN(CAM_CRM,
 		"release invoked associated userspace process has died");
-
 	mutex_lock(&g_dev.cam_lock);
+
 	if (g_dev.open_cnt <= 0) {
 		mutex_unlock(&g_dev.cam_lock);
 		return -EINVAL;
-	}
-
-	g_dev.open_cnt--;
-	CAM_DBG(CAM_CRM, "CRM open_cnt %d", g_dev.open_cnt);
-
-	if (g_dev.open_cnt > 0) {
-		mutex_unlock(&g_dev.cam_lock);
-		return 0;
 	}
 
 	cam_req_mgr_handle_core_shutdown();
@@ -185,6 +176,7 @@ static int cam_req_mgr_close(struct file *filep)
 		}
 	}
 
+	g_dev.open_cnt--;
 	v4l2_fh_release(filep);
 
 	spin_lock_bh(&g_dev.cam_eventq_lock);
@@ -643,23 +635,6 @@ void cam_register_subdev_fops(struct v4l2_file_operations *fops)
 }
 EXPORT_SYMBOL(cam_register_subdev_fops);
 
-void cam_subdev_notify_message(u32 subdev_type,
-	enum cam_subdev_message_type_t message_type,
-	uint32_t data)
-{
-	struct v4l2_subdev *sd = NULL;
-	struct cam_subdev *csd = NULL;
-
-	list_for_each_entry(sd, &g_dev.v4l2_dev->subdevs, list) {
-		if (sd->entity.function == subdev_type) {
-			csd = container_of(sd, struct cam_subdev, sd);
-			if (csd->msg_cb != NULL)
-				csd->msg_cb(sd, message_type, data);
-		}
-	}
-}
-EXPORT_SYMBOL(cam_subdev_notify_message);
-
 int cam_register_subdev(struct cam_subdev *csd)
 {
 	struct v4l2_subdev *sd;
@@ -688,7 +663,7 @@ int cam_register_subdev(struct cam_subdev *csd)
 	sd = &csd->sd;
 	v4l2_subdev_init(sd, csd->ops);
 	sd->internal_ops = csd->internal_ops;
-	snprintf(sd->name, V4L2_SUBDEV_NAME_SIZE, "%s", csd->name);
+	snprintf(sd->name, ARRAY_SIZE(sd->name), csd->name);
 	v4l2_set_subdevdata(sd, csd->token);
 
 	sd->flags = csd->sd_flags;

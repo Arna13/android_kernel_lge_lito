@@ -51,15 +51,6 @@
 #include <linux/export.h>
 #include <trace/events/power.h>
 
-#ifdef CONFIG_LGE_PM_DEBUG
-#include "../workqueue_internal.h"
-#include <linux/workqueue.h>
-#include <linux/mm.h>
-#endif
-#ifdef CONFIG_PROC_FS
-#include <linux/proc_fs.h>
-#endif
-
 /*
  * locking rule: all changes to constraints or notifiers lists
  * or pm_qos_object list and pm_qos_objects need to happen with pm_qos_lock
@@ -162,43 +153,6 @@ static const struct file_operations pm_qos_power_fops = {
 	.llseek = noop_llseek,
 };
 
-#ifdef CONFIG_PROC_FS
-static int pm_qos_dbg_show_requests(struct seq_file *s, void *unused);
-
-static int procfs_pm_qos_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, pm_qos_dbg_show_requests, PDE_DATA(inode));
-}
-
-static const struct file_operations procfs_pm_qos_fops = {
-	.open           = procfs_pm_qos_open,
-	.read           = seq_read,
-	.llseek         = seq_lseek,
-	.release        = single_release,
-};
-#endif
-#ifdef CONFIG_LGE_PM_DEBUG
-/* if can't find clue then, check call stack of thing that is same with desc  */
-static void pm_qos_get_client_info(struct pm_qos_request *req, struct task_struct *task)
-{
-	work_func_t *fn = NULL;
-	struct worker *worker;
-	//char desc[WORKER_DESC_LEN] = {}; /* for debugging */
-
-	strncpy(req->name, task->comm, sizeof(req->name));
-	if(task->flags & PF_WQ_WORKER) { // if task is workqueue
-		worker = kthread_probe_data(task);
-		probe_kernel_read(&fn, &worker->current_func, sizeof(fn));
-		//probe_kernel_read(desc, worker->desc, sizeof(desc)-1); /* for debugging */
-
-		if(fn) {
-			snprintf(req->name, sizeof(req->name), "%pf", fn);
-			//snprintf(req->desc, sizeof(req->desc), "%s", desc); /* for debugging */
-		}
-	}
-}
-#endif
-
 /* unlocked internal variant */
 static inline int pm_qos_get_value(struct pm_qos_constraints *c)
 {
@@ -279,9 +233,6 @@ static int pm_qos_dbg_show_requests(struct seq_file *s, void *unused)
 		type = "Unknown";
 	}
 
-#ifdef CONFIG_LGE_PM_DEBUG
-	seq_printf(s, "PM_QOS INFORMATION\n");
-#endif
 	plist_for_each_entry(req, &c->list, node) {
 		char *state = "Default";
 
@@ -290,13 +241,8 @@ static int pm_qos_dbg_show_requests(struct seq_file *s, void *unused)
 			state = "Active";
 		}
 		tot_reqs++;
-#ifdef CONFIG_LGE_PM_DEBUG
-		seq_printf(s, "%d: %25s: %d: %s\n", tot_reqs,
-			   req->name, (req->node).prio, state);
-#elif
 		seq_printf(s, "%d: %d: %s\n", tot_reqs,
 			   (req->node).prio, state);
-#endif
 	}
 
 	seq_printf(s, "Type=%s, Value=%d, Requests: active=%d / total=%d\n",
@@ -654,9 +600,6 @@ void pm_qos_add_request(struct pm_qos_request *req,
 		return;
 	}
 
-#ifdef CONFIG_LGE_PM_DEBUG
-	pm_qos_get_client_info(req, current);
-#endif
 	switch (req->type) {
 	case PM_QOS_REQ_AFFINE_CORES:
 		if (cpumask_empty(&req->cpus_affine)) {
@@ -752,9 +695,6 @@ void pm_qos_update_request(struct pm_qos_request *req,
 		return;
 	}
 
-#ifdef CONFIG_LGE_PM_DEBUG
-	pm_qos_get_client_info(req, current);
-#endif
 	cancel_delayed_work_sync(&req->work);
 	__pm_qos_update_request(req, new_value);
 }
@@ -880,9 +820,6 @@ static int register_pm_qos_misc(struct pm_qos_object *qos, struct dentry *d)
 					  (void *)qos, &pm_qos_debug_fops);
 	}
 
-#ifdef CONFIG_PROC_FS
-	proc_create_data(qos->name, 0444, NULL, &procfs_pm_qos_fops, (void *)qos);
-#endif
 	return misc_register(&qos->pm_qos_power_miscdev);
 }
 

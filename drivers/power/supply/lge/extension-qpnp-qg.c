@@ -138,9 +138,6 @@ static struct _rescale rescale = {
 static int get_charging_type(struct qpnp_qg *qg)
 {
 	union power_supply_propval val = { 0, };
-#ifdef CONFIG_LGE_PM_VENEER_PSY
-	char slimit[20] = "";
-#endif
 
 	if (qg->batt_psy) {
 		if (!power_supply_get_property(qg->batt_psy,
@@ -156,21 +153,7 @@ static int get_charging_type(struct qpnp_qg *qg)
 				return TCOMP_CHG_USB;
 	}
 
-	if (qg->dc_psy) {
-		if (!power_supply_get_property(qg->dc_psy,
-			POWER_SUPPLY_PROP_PRESENT, &val)) {
-			if (val.intval) {
-#ifdef CONFIG_LGE_PM_VENEER_PSY
-				if (unified_nodes_show("status_lcd", slimit)) {
-					if (slimit[0] == '0')
-						return TCOMP_CHG_WLC_LCDOFF;
-					return TCOMP_CHG_WLC_LCDON;
-				} else
-#endif
-					return TCOMP_CHG_WLC_LCDOFF;
-			}
-		}
-	}
+	/* if you have wlc, you need to add TCOMP_CHG_WLC_ here */
 
 	return TCOMP_CHG_NONE;
 }
@@ -514,54 +497,6 @@ static int lge_is_qg_charging(struct qpnp_qg *qg)
 	return -1;
 }
 
-#ifdef CONFIG_LGE_PM_CCD_TTF_LOG
-static void ttf_logging(struct qpnp_qg *qg, int cttf)
-{
-	struct power_supply*    battery_psy = power_supply_get_by_name("battery");
-	struct power_supply*    usb_psy = power_supply_get_by_name("usb");
-	union power_supply_propval      val = { .intval = -1000 };
-	int chgtype = POWER_SUPPLY_CHARGE_TYPE_NONE;
-	int iusb = 0;
-	int ibat = 0;
-	int buf = 0;
-	static int prev_ibat = 0;
-
-	if (battery_psy && !power_supply_get_property(battery_psy, POWER_SUPPLY_PROP_CHARGE_TYPE, &val))
-		chgtype = val.intval;
-
-	if (chgtype == POWER_SUPPLY_CHARGE_TYPE_NONE || (cttf < 0 || cttf > 1000)) {
-		ibat = 0;
-		iusb = 0;
-		prev_ibat = ibat;
-		return;
-	}
-
-	if (chgtype == POWER_SUPPLY_CHARGE_TYPE_FAST || chgtype == POWER_SUPPLY_CHARGE_TYPE_TAPER) {
-		if (usb_psy && !power_supply_get_property(usb_psy,
-				POWER_SUPPLY_PROP_CURRENT_MAX, &val))
-			iusb = val.intval/1000;
-		if (battery_psy && !power_supply_get_property(battery_psy,
-				POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT, &val))
-			ibat = val.intval/1000;
-
-		if (chgtype == POWER_SUPPLY_CHARGE_TYPE_FAST) {
-			if (prev_ibat != ibat && iusb != 0)
-				pr_info("TTFINFO: [CC] cTTF:%d, iFCC:%d\n", cttf, ibat);
-		}
-
-		if (chgtype == POWER_SUPPLY_CHARGE_TYPE_TAPER) {
-			qg_get_battery_current(qg, &buf);
-			pr_info("TTFINFO: [CV] cTTF:%d, iBAT:%d\n", cttf, abs(buf)/1000);
-		}
-	}
-
-	if (battery_psy)
-		power_supply_put(battery_psy);
-	if (usb_psy)
-		power_supply_put(usb_psy);
-	prev_ibat = ibat;
-}
-#endif
 #define FULL_CAPACITY	100
 int lge_get_ui_soc(struct qpnp_qg *qg, int msoc_raw)
 {
@@ -579,9 +514,6 @@ int lge_get_ui_soc(struct qpnp_qg *qg, int msoc_raw)
 		if (prev_msoc_raw != msoc_raw) {
 			snprintf(buf, sizeof(buf), "%d", msoc_raw);
 			unified_nodes_store("ttf_capacity", buf, strlen(buf));
-#ifdef CONFIG_LGE_PM_CCD_TTF_LOG
-			ttf_logging(qg, msoc_raw);
-#endif
 		}
 		prev_msoc_raw = msoc_raw;
 	}
@@ -814,11 +746,7 @@ extension_bms_get_property_pre(struct power_supply *psy,
 
 	case POWER_SUPPLY_PROP_UPDATE_NOW :
 		/* Do nothing and just consume getting */
-		if (qg != NULL) {
-			val->intval = qg->in_esr_process;
-		} else {
-			val->intval = -1;
-		}
+		val->intval = -1;
 		break;
 
 	default:

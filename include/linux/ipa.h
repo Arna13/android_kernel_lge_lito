@@ -353,15 +353,15 @@ struct ipa_ep_cfg_holb {
  * @syspipe_err_detection - If set to 1, enables error detection for
  *	de-aggregration. Valid only for Input Pipes, which are configured
  *	for 'Generic' deaggregation.
- *	Note: if this bit is set, de-aggregated frames must be contiguous
+ * 	Note: if this bit is set, de-aggregated frames must be contiguous
  *	in memory.
  * @packet_offset_valid: - 0: PACKET_OFFSET is not used, 1: PACKET_OFFSET is
  *	used.
  * @packet_offset_location: Location of packet offset field, which specifies
  *	the offset to the packet from the start of the packet offset field.
  * @ignore_min_pkt_err - Ignore packets smaller than header. This is intended
- *	for use in RNDIS de-aggregated pipes, to silently ignore a redundant
- *	1-byte trailer in MSFT implementation.
+ * 	for use in RNDIS de-aggregated pipes, to silently ignore a redundant
+ * 	1-byte trailer in MSFT implementation.
  * @max_packet_len: DEAGGR Max Packet Length in Bytes. A Packet with higher
  *	size wil be treated as an error. 0 - Packet Length is not Bound,
  *	IPA should not check for a Max Packet Length.
